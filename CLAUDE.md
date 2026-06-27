@@ -8,3 +8,6 @@ The app should the record the time taken by the user to select the correct note.
 There should also be a "pause/resume" button.
 Make the interface clean and modern.
 Make sure the online app runs both on computer and smart phone.
+
+The clef de do/sol/fa should appear on the 5 lines.
+The app should be able to select the instrument (in particular, clef de do and clef de sol should have piano available).

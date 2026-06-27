@@ -99,6 +99,7 @@
         <button class="btn-secondary" @click="togglePause">
           {{ paused ? t.resume : t.pause }}
         </button>
+        <button class="btn-skip" :disabled="paused || !!feedback" @click="skipNote">{{ t.skip }}</button>
         <button class="btn-danger" @click="stopGame">{{ t.stop }}</button>
       </div>
     </div>
@@ -295,6 +296,12 @@ function answerClass(idx) {
   return ''
 }
 
+function skipNote() {
+  if (feedbackTimeout) clearTimeout(feedbackTimeout)
+  feedback.value = null
+  pickNextNote()
+}
+
 function togglePause() { paused.value = !paused.value }
 
 function stopGame() {
@@ -461,6 +468,19 @@ onBeforeUnmount(() => {
 }
 
 .btn-secondary:hover { background: var(--border); }
+
+.btn-skip {
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  padding: 10px 16px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  flex: 1;
+}
+
+.btn-skip:hover:not(:disabled) { border-color: var(--text-muted); color: var(--text); }
+.btn-skip:disabled { opacity: 0.35; cursor: not-allowed; }
 
 .btn-danger {
   background: transparent;

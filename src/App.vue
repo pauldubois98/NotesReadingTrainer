@@ -52,6 +52,7 @@
           </label>
           <input type="range" min="0" max="5" v-model.number="maxHistory" class="slider" />
         </div>
+
       </div>
 
       <!-- Staff preview -->
@@ -102,14 +103,35 @@
         >{{ note }}</button>
       </div>
 
+      <!-- Voice heard indicator -->
+      <div class="voice-heard" :class="{ visible: isListening && lastHeard }">
+        {{ t.voiceHeard }}: <strong>{{ lastHeard }}</strong>
+      </div>
+
       <!-- Controls -->
       <div class="controls">
         <button class="btn-secondary" @click="togglePause">
           {{ paused ? t.resume : t.pause }}
         </button>
+        <button
+          v-if="voiceSupported"
+          :class="['btn-mic', { active: isListening }]"
+          :title="isListening ? t.voiceOff : t.voiceOn"
+          :disabled="paused"
+          @click="toggleVoice"
+        >🎤</button>
         <button class="btn-skip" :disabled="paused || !!feedback" @click="skipNote">{{ t.skip }}</button>
         <button class="btn-danger" @click="stopGame">{{ t.stop }}</button>
         <button class="btn-quit" @click="quitGame">{{ t.quit }}</button>
+      </div>
+
+      <!-- Mic threshold (shown only while voice is active) -->
+      <div v-if="voiceSupported && isListening" class="mic-threshold-row">
+        <label class="setting-label">
+          🎤 {{ t.micThreshold }} —
+          <span class="slider-value">{{ micThreshold === 0 ? t.micOff : micThreshold + '%' }}</span>
+        </label>
+        <input type="range" min="0" max="90" step="5" v-model.number="micThreshold" class="slider" />
       </div>
     </div>
 
@@ -164,6 +186,7 @@
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import MusicStaff from './components/MusicStaff.vue'
 import { useI18n, INSTRUMENTS_BY_CLEF } from './i18n.js'
+import { useVoiceInput } from './composables/useVoiceInput.js'
 
 // --- Theme ---
 const isDark = ref(true)
@@ -180,6 +203,7 @@ const t = computed(() => useI18n(lang.value))
 const clef = ref('sol')
 const instrument = ref('piano')
 const maxHistory = ref(3)
+const micThreshold = ref(0)  // 0–90, used as confidence threshold / 100
 
 const availableInstruments = computed(() => INSTRUMENTS_BY_CLEF[clef.value] ?? [])
 
@@ -326,6 +350,7 @@ function togglePause() { paused.value = !paused.value }
 function quitGame() {
   stopTimer()
   if (feedbackTimeout) clearTimeout(feedbackTimeout)
+  if (isListening.value) toggleVoice()
   feedback.value = null
   noteHistory.value = []
   screen.value = 'setup'
@@ -334,6 +359,7 @@ function quitGame() {
 function stopGame() {
   stopTimer()
   if (feedbackTimeout) clearTimeout(feedbackTimeout)
+  if (isListening.value) toggleVoice()
   screen.value = 'summary'
 }
 
@@ -341,6 +367,10 @@ function playAgain() {
   screen.value = 'setup'
   noteHistory.value = []
 }
+
+// --- Voice input ---
+const { isSupported: voiceSupported, isListening, lastHeard, toggle: toggleVoice } =
+  useVoiceInput({ lang, onNote: answer, micThreshold })
 
 onBeforeUnmount(() => {
   stopTimer()
@@ -506,6 +536,40 @@ onBeforeUnmount(() => {
   color: var(--primary);
   font-weight: 700;
 }
+
+.btn-mic {
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  flex: 0 0 auto;
+}
+.btn-mic.active { border-color: var(--primary); color: var(--primary); animation: pulse-mic 1.8s ease infinite; }
+.btn-mic:disabled { opacity: 0.4; cursor: not-allowed; }
+
+@keyframes pulse-mic {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 40%, transparent); }
+  50%       { box-shadow: 0 0 0 6px color-mix(in srgb, var(--primary) 0%, transparent); }
+}
+
+.mic-threshold-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 2px 0;
+}
+
+.voice-heard {
+  text-align: center;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  min-height: 1.3em;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.voice-heard.visible { opacity: 1; }
 
 .btn-quit {
   background: transparent;

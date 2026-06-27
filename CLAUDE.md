@@ -20,3 +20,10 @@ Show the last 3 notes (shift to the left after submission).
 
 In the menu, ther should be a slider to select how many pas notes to show (say 0-5).
 Also add a quit button that goes back to the menu directly.
+
+Now I want to add the ability of the user to say the note, and using voice recognition, have that as another way of input (so the user can either click or say).
+First, let's plan this: what is a good model for voice recognition, knowing that there is only 7 possible things that the user can say.
+Not that noise should be ignored, as well as if the user says "hello".
+Add a microphone sensitivity treshold.
+Allow user to click buttons while mic is on.
+

@@ -1,6 +1,6 @@
 <template>
   <div class="app">
-    <!-- Setup screen -->
+    <!-- ── Setup screen ────────────────────────────────────────── -->
     <div v-if="screen === 'setup'" class="card setup-card">
       <h1 class="title">{{ t.title }}</h1>
       <p class="subtitle">{{ t.subtitle }}</p>
@@ -24,17 +24,24 @@
           <label class="setting-label">{{ t.clef }}</label>
           <div class="toggle-group">
             <button
-              :class="['toggle-btn', { active: clef === 'sol' }]"
-              @click="clef = 'sol'"
-            >{{ t.clefSol }}</button>
+              v-for="c in ['sol', 'do', 'fa']"
+              :key="c"
+              :class="['toggle-btn', { active: clef === c }]"
+              @click="selectClef(c)"
+            >{{ t[`clef${c.charAt(0).toUpperCase() + c.slice(1)}`] }}</button>
+          </div>
+        </div>
+
+        <!-- Instrument -->
+        <div class="setting-group">
+          <label class="setting-label">{{ t.instrument }}</label>
+          <div class="toggle-group">
             <button
-              :class="['toggle-btn', { active: clef === 'do' }]"
-              @click="clef = 'do'"
-            >{{ t.clefDo }}</button>
-            <button
-              :class="['toggle-btn', { active: clef === 'fa' }]"
-              @click="clef = 'fa'"
-            >{{ t.clefFa }}</button>
+              v-for="id in availableInstruments"
+              :key="id"
+              :class="['toggle-btn', { active: instrument === id }]"
+              @click="instrument = id"
+            >{{ t.instruments[id] }}</button>
           </div>
         </div>
       </div>
@@ -45,7 +52,7 @@
       <button class="btn-primary btn-large" @click="startGame">{{ t.start }}</button>
     </div>
 
-    <!-- Game screen -->
+    <!-- ── Game screen ─────────────────────────────────────────── -->
     <div v-else-if="screen === 'game'" class="card game-card">
       <!-- Header -->
       <div class="game-header">
@@ -61,6 +68,13 @@
           <span class="stat-label">{{ t.time }}</span>
           <span class="stat-value">{{ formattedTime }}</span>
         </div>
+      </div>
+
+      <!-- Context badge -->
+      <div class="context-badge">
+        <span>{{ t[`clef${clef.charAt(0).toUpperCase() + clef.slice(1)}`] }}</span>
+        <span class="context-sep">·</span>
+        <span>{{ t.instruments[instrument] }}</span>
       </div>
 
       <!-- Staff -->
@@ -89,33 +103,28 @@
       </div>
     </div>
 
-    <!-- Summary screen -->
+    <!-- ── Summary screen ──────────────────────────────────────── -->
     <div v-else-if="screen === 'summary'" class="card summary-card">
       <h2 class="summary-title">{{ t.summary }}</h2>
 
       <div class="summary-stats">
         <div class="summary-stat">
-          <span class="summary-icon">🎵</span>
           <span class="summary-label">{{ t.totalNotes }}</span>
           <span class="summary-value">{{ correct + errors }}</span>
         </div>
         <div class="summary-stat">
-          <span class="summary-icon">✓</span>
           <span class="summary-label">{{ t.score }}</span>
           <span class="summary-value correct-val">{{ correct }}</span>
         </div>
         <div class="summary-stat">
-          <span class="summary-icon">✗</span>
           <span class="summary-label">{{ t.errors }}</span>
           <span class="summary-value error-val">{{ errors }}</span>
         </div>
         <div class="summary-stat">
-          <span class="summary-icon">⏱</span>
           <span class="summary-label">{{ t.time }}</span>
           <span class="summary-value">{{ formattedTotalTime }}</span>
         </div>
         <div class="summary-stat">
-          <span class="summary-icon">⚡</span>
           <span class="summary-label">{{ t.avgTime }}</span>
           <span class="summary-value">{{ avgTimePerNote }}</span>
         </div>
@@ -126,12 +135,11 @@
         <div v-for="(note, idx) in t.notes" :key="idx" class="breakdown-row">
           <span class="breakdown-note">{{ note }}</span>
           <div class="breakdown-bar-wrap">
-            <div
-              class="breakdown-bar"
-              :style="{ width: breakdownBarWidth(idx) + '%' }"
-            />
+            <div class="breakdown-bar" :style="{ width: breakdownBarWidth(idx) + '%' }" />
           </div>
-          <span class="breakdown-count">{{ noteStats[idx]?.correct ?? 0 }}/{{ (noteStats[idx]?.correct ?? 0) + (noteStats[idx]?.wrong ?? 0) }}</span>
+          <span class="breakdown-count">
+            {{ noteStats[idx]?.correct ?? 0 }}/{{ (noteStats[idx]?.correct ?? 0) + (noteStats[idx]?.wrong ?? 0) }}
+          </span>
         </div>
       </div>
 
@@ -143,9 +151,9 @@
 </template>
 
 <script setup>
-import { ref, computed, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import MusicStaff from './components/MusicStaff.vue'
-import { useI18n } from './i18n.js'
+import { useI18n, INSTRUMENTS_BY_CLEF } from './i18n.js'
 
 // --- i18n ---
 const lang = ref('fr')
@@ -153,19 +161,24 @@ const t = computed(() => useI18n(lang.value))
 
 // --- Settings ---
 const clef = ref('sol')
+const instrument = ref('piano')
 
-// Note names index (0=Do, 1=Re, 2=Mi, 3=Fa, 4=Sol, 5=La, 6=Si)
-// For clef de Sol: position 0 (bottom line) = Mi (index 2)
-// For clef de Do (alto): position 0 (bottom line) = Fa (index 3)
-// For clef de Fa: position 0 (bottom line) = Sol (index 4)
-function clefOffset(clefType) {
-  if (clefType === 'sol') return 2
-  if (clefType === 'do') return 3
-  return 4 // fa
+const availableInstruments = computed(() => INSTRUMENTS_BY_CLEF[clef.value] ?? [])
+
+function selectClef(c) {
+  clef.value = c
+  // Reset to first available instrument for this clef
+  instrument.value = INSTRUMENTS_BY_CLEF[c][0]
 }
 
-// Staff positions: 0=line1(bottom) .. 8=line5(top), +ledger lines
-// We use positions from -4 (2 ledger lines below) to 12 (2 ledger lines above)
+// Note names index (0=Do, 1=Re, 2=Mi, 3=Fa, 4=Sol, 5=La, 6=Si)
+// Offset = note index of the bottom line (pos 0) for each clef
+function clefOffset(clefType) {
+  if (clefType === 'sol') return 2  // Mi on bottom line
+  if (clefType === 'do')  return 3  // Fa on bottom line (alto C clef)
+  return 4                          // Sol on bottom line (bass clef)
+}
+
 const MIN_POS = -4
 const MAX_POS = 12
 
@@ -181,60 +194,43 @@ const feedback = ref(null)
 const correct = ref(0)
 const errors = ref(0)
 const paused = ref(false)
-
-// Per-note stats: { correct, wrong } indexed by note name index (0-6)
 const noteStats = ref(Array.from({ length: 7 }, () => ({ correct: 0, wrong: 0 })))
 
-// Timer
 let timerInterval = null
 const elapsedMs = ref(0)
-let noteStartMs = 0
-
-// Preview for setup screen
-const previewPosition = ref(4) // middle of staff
-
-// Track last feedback timeout
 let feedbackTimeout = null
+
+const previewPosition = ref(4)
 
 // --- Computed ---
 const formattedTime = computed(() => {
   const s = Math.floor(elapsedMs.value / 1000)
   const m = Math.floor(s / 60)
-  const ss = String(s % 60).padStart(2, '0')
-  return `${m}:${ss}`
+  return `${m}:${String(s % 60).padStart(2, '0')}`
 })
 
-const formattedTotalTime = computed(() => {
-  const s = Math.floor(elapsedMs.value / 1000)
-  const m = Math.floor(s / 60)
-  const ss = String(s % 60).padStart(2, '0')
-  return `${m}:${ss}`
-})
+const formattedTotalTime = computed(() => formattedTime.value)
 
 const avgTimePerNote = computed(() => {
   const total = correct.value + errors.value
   if (total === 0) return '—'
-  const avg = elapsedMs.value / total / 1000
-  return avg.toFixed(1) + ' ' + t.value.seconds
+  return (elapsedMs.value / total / 1000).toFixed(1) + ' ' + t.value.seconds
 })
 
 function breakdownBarWidth(idx) {
-  const stat = noteStats.value[idx]
-  if (!stat) return 0
-  const total = stat.correct + stat.wrong
-  if (total === 0) return 0
-  return Math.round((stat.correct / total) * 100)
+  const s = noteStats.value[idx]
+  if (!s) return 0
+  const total = s.correct + s.wrong
+  return total === 0 ? 0 : Math.round((s.correct / total) * 100)
 }
 
 // --- Game logic ---
 function pickNextNote() {
-  // Pick a random position, avoid repeating same position
   let pos
   do {
     pos = Math.floor(Math.random() * (MAX_POS - MIN_POS + 1)) + MIN_POS
   } while (pos === currentPosition.value)
   currentPosition.value = pos
-  noteStartMs = performance.now()
 }
 
 function startGame() {
@@ -252,20 +248,14 @@ function startGame() {
 function startTimer() {
   let lastTick = performance.now()
   timerInterval = setInterval(() => {
-    if (!paused.value) {
-      const now = performance.now()
-      elapsedMs.value += now - lastTick
-    }
     const now = performance.now()
+    if (!paused.value) elapsedMs.value += now - lastTick
     lastTick = now
   }, 100)
 }
 
 function stopTimer() {
-  if (timerInterval) {
-    clearInterval(timerInterval)
-    timerInterval = null
-  }
+  if (timerInterval) { clearInterval(timerInterval); timerInterval = null }
 }
 
 function answer(noteIdx) {
@@ -294,13 +284,11 @@ function answerClass(idx) {
   if (!feedback.value) return ''
   const expected = noteNameIndex(currentPosition.value, clef.value)
   if (feedback.value === 'correct' && idx === expected) return 'btn-correct'
-  if (feedback.value === 'wrong' && idx === expected) return 'btn-highlight'
+  if (feedback.value === 'wrong'   && idx === expected) return 'btn-highlight'
   return ''
 }
 
-function togglePause() {
-  paused.value = !paused.value
-}
+function togglePause() { paused.value = !paused.value }
 
 function stopGame() {
   stopTimer()
@@ -338,7 +326,7 @@ onBeforeUnmount(() => {
   max-width: 480px;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 20px;
 }
 
 /* Setup */
@@ -346,47 +334,47 @@ onBeforeUnmount(() => {
   font-size: 1.6rem;
   font-weight: 700;
   text-align: center;
-  color: var(--text);
 }
 
 .subtitle {
   color: var(--text-muted);
   text-align: center;
   font-size: 0.9rem;
+  margin-top: -8px;
 }
 
 .settings {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
 }
 
 .setting-group {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 7px;
 }
 
 .setting-label {
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
   color: var(--text-muted);
 }
 
 .toggle-group {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
 }
 
 .toggle-btn {
-  padding: 8px 16px;
+  padding: 7px 14px;
   border-radius: var(--radius-sm);
   background: var(--surface-2);
   color: var(--text-muted);
-  font-size: 0.875rem;
+  font-size: 0.85rem;
   font-weight: 500;
   border: 1px solid transparent;
 }
@@ -411,9 +399,7 @@ onBeforeUnmount(() => {
   font-weight: 600;
 }
 
-.btn-primary:hover {
-  background: var(--primary-hover);
-}
+.btn-primary:hover { background: var(--primary-hover); }
 
 .btn-large {
   width: 100%;
@@ -430,9 +416,7 @@ onBeforeUnmount(() => {
   flex: 1;
 }
 
-.btn-secondary:hover {
-  background: var(--border);
-}
+.btn-secondary:hover { background: var(--border); }
 
 .btn-danger {
   background: transparent;
@@ -444,10 +428,7 @@ onBeforeUnmount(() => {
   flex: 1;
 }
 
-.btn-danger:hover {
-  background: var(--error);
-  color: white;
-}
+.btn-danger:hover { background: var(--error); color: white; }
 
 /* Game */
 .game-header {
@@ -476,6 +457,18 @@ onBeforeUnmount(() => {
 
 .error-val { color: var(--error); }
 .correct-val { color: var(--success); }
+
+.context-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: -8px;
+}
+
+.context-sep { opacity: 0.4; }
 
 .staff-area {
   position: relative;
@@ -511,25 +504,10 @@ onBeforeUnmount(() => {
   border: 1px solid transparent;
 }
 
-.note-btn:hover:not(:disabled) {
-  background: var(--primary);
-  color: white;
-}
-
-.note-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.note-btn.btn-correct {
-  background: var(--success);
-  color: white;
-}
-
-.note-btn.btn-highlight {
-  border-color: var(--success);
-  color: var(--success);
-}
+.note-btn:hover:not(:disabled) { background: var(--primary); color: white; }
+.note-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.note-btn.btn-correct { background: var(--success); color: white; }
+.note-btn.btn-highlight { border-color: var(--success); color: var(--success); }
 
 .controls {
   display: flex;
@@ -546,38 +524,34 @@ onBeforeUnmount(() => {
 .summary-stats {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  gap: 10px;
 }
 
 .summary-stat {
   background: var(--surface-2);
   border-radius: var(--radius-sm);
-  padding: 14px;
+  padding: 12px 14px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-}
-
-.summary-icon {
-  font-size: 1.2rem;
+  gap: 3px;
 }
 
 .summary-label {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
 .summary-value {
-  font-size: 1.5rem;
+  font-size: 1.4rem;
   font-weight: 700;
 }
 
 .note-breakdown {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 7px;
 }
 
 .breakdown-row {
@@ -593,7 +567,7 @@ onBeforeUnmount(() => {
 }
 
 .breakdown-bar-wrap {
-  height: 8px;
+  height: 7px;
   background: var(--surface-2);
   border-radius: 4px;
   overflow: hidden;
@@ -612,33 +586,12 @@ onBeforeUnmount(() => {
   text-align: right;
 }
 
-.summary-actions {
-  margin-top: 4px;
-}
-
 /* Mobile */
 @media (max-width: 400px) {
-  .card {
-    padding: 20px 16px;
-    gap: 18px;
-  }
-
-  .note-buttons {
-    grid-template-columns: repeat(7, 1fr);
-    gap: 4px;
-  }
-
-  .note-btn {
-    padding: 12px 2px;
-    font-size: 0.8rem;
-  }
-
-  .title {
-    font-size: 1.3rem;
-  }
-
-  .summary-stats {
-    grid-template-columns: 1fr;
-  }
+  .card { padding: 18px 14px; gap: 16px; }
+  .note-buttons { gap: 4px; }
+  .note-btn { padding: 12px 2px; font-size: 0.8rem; }
+  .title { font-size: 1.3rem; }
+  .summary-stats { grid-template-columns: 1fr; }
 }
 </style>

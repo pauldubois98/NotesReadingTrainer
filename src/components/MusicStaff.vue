@@ -2,7 +2,7 @@
   <div class="staff-wrapper">
     <svg :viewBox="`0 0 ${WIDTH} ${HEIGHT}`" class="staff-svg" role="img" aria-label="Music staff">
 
-      <!-- Staff lines — run from x=4 through the clef and across the full width -->
+      <!-- Staff lines (run through the clef and the full note area) -->
       <line
         v-for="i in 5"
         :key="i"
@@ -14,8 +14,7 @@
         stroke-width="1.5"
       />
 
-      <!-- ── Treble clef (Sol) ────────────────────────────────── -->
-      <!-- G curl is on line 2. The Unicode glyph baseline ≈ G line. -->
+      <!-- ── Treble clef (Sol) ──────────────────────────────────── -->
       <text
         v-if="clef === 'sol'"
         :x="36"
@@ -26,106 +25,80 @@
       >𝄞</text>
 
       <!-- ── Bass clef (Fa) ──────────────────────────────────── -->
-      <!-- F is on line 4 (pos 6). Starting dot + upward curved stroke + 2 reference dots. -->
       <g v-else-if="clef === 'fa'">
-        <!-- Starting filled dot at F line -->
         <circle :cx="13" :cy="positionToY(6)" r="5.5" class="clef-shape" />
-        <!-- Curved hook stroke arcing from F line upward then back down -->
-        <path
-          :d="bassClefPath"
-          fill="none" class="clef-shape" stroke-width="3.5" stroke-linecap="round"
-        />
-        <!-- Upper reference dot: space between lines 4 and 5 (pos 7) -->
+        <path :d="bassClefPath" fill="none" class="clef-shape" stroke-width="3.5" stroke-linecap="round" />
         <circle :cx="44" :cy="positionToY(7)" r="3" class="clef-shape" />
-        <!-- Lower reference dot: space between lines 3 and 4 (pos 5) -->
         <circle :cx="44" :cy="positionToY(5)" r="3" class="clef-shape" />
       </g>
 
-      <!-- ── Alto C clef (Do) ────────────────────────────────── -->
-      <!-- C (middle C context) is on line 3 (pos 4).              -->
-      <!-- Shape: thick left bar + two arms converging on C line + right bar -->
+      <!-- ── Alto C clef (Do) ─────────────────────────────────── -->
       <g v-else>
-        <!-- Left thick vertical bar spanning lines 1–5 -->
-        <rect
-          :x="4" :y="positionToY(8) - 2"
-          width="7"
-          :height="positionToY(0) - positionToY(8) + 4"
-          rx="2" class="clef-shape"
-        />
-        <!-- Upper arm: from top of staff (line 5) down to C line (line 3) -->
-        <line
-          :x1="11" :y1="positionToY(8)"
-          :x2="37" :y2="positionToY(4)"
-          class="clef-shape" stroke-width="4.5" stroke-linecap="round"
-        />
-        <!-- Lower arm: from bottom of staff (line 1) up to C line -->
-        <line
-          :x1="11" :y1="positionToY(0)"
-          :x2="37" :y2="positionToY(4)"
-          class="clef-shape" stroke-width="4.5" stroke-linecap="round"
-        />
-        <!-- Right small bar: from one space above C to one space below -->
-        <rect
-          :x="35" :y="positionToY(6)"
-          width="5"
-          :height="positionToY(2) - positionToY(6)"
-          rx="2" class="clef-shape"
-        />
+        <rect :x="4" :y="positionToY(8) - 2" width="7" :height="positionToY(0) - positionToY(8) + 4" rx="2" class="clef-shape" />
+        <line :x1="11" :y1="positionToY(8)" :x2="37" :y2="positionToY(4)" class="clef-shape" stroke-width="4.5" stroke-linecap="round" />
+        <line :x1="11" :y1="positionToY(0)" :x2="37" :y2="positionToY(4)" class="clef-shape" stroke-width="4.5" stroke-linecap="round" />
+        <rect :x="35" :y="positionToY(6)" width="5" :height="positionToY(2) - positionToY(6)" rx="2" class="clef-shape" />
       </g>
 
-      <!-- Ledger lines above staff -->
-      <template v-if="notePosition > 8">
+      <!-- ── Note history (up to 3 notes, newest on the right) ─── -->
+      <!--
+        Each note group is translated to its x-slot.
+        CSS transition on transform produces the slide-left animation.
+      -->
+      <g
+        v-for="(item, idx) in displayItems"
+        :key="item.id"
+        :style="{
+          transform: `translateX(${slotX(idx)}px)`,
+          transition: 'transform 0.28s ease',
+          opacity: isCurrent(idx) ? 1 : 0.45,
+        }"
+      >
+        <!-- Ledger lines above the staff (positions are relative: x1/x2 are offsets from 0) -->
         <line
-          v-for="pos in ledgerPositionsAbove"
-          :key="`above-${pos}`"
-          :x1="NOTE_X - NOTE_RX - 6"
-          :y1="positionToY(pos)"
-          :x2="NOTE_X + NOTE_RX + 6"
-          :y2="positionToY(pos)"
+          v-for="lp in ledgerAbove(item.pos)"
+          :key="`a${lp}`"
+          :x1="-(NOTE_RX + 6)"
+          :y1="positionToY(lp)"
+          :x2="NOTE_RX + 6"
+          :y2="positionToY(lp)"
           class="staff-line"
           stroke-width="1.5"
         />
-      </template>
-
-      <!-- Ledger lines below staff -->
-      <template v-if="notePosition < 0">
+        <!-- Ledger lines below the staff -->
         <line
-          v-for="pos in ledgerPositionsBelow"
-          :key="`below-${pos}`"
-          :x1="NOTE_X - NOTE_RX - 6"
-          :y1="positionToY(pos)"
-          :x2="NOTE_X + NOTE_RX + 6"
-          :y2="positionToY(pos)"
+          v-for="lp in ledgerBelow(item.pos)"
+          :key="`b${lp}`"
+          :x1="-(NOTE_RX + 6)"
+          :y1="positionToY(lp)"
+          :x2="NOTE_RX + 6"
+          :y2="positionToY(lp)"
           class="staff-line"
           stroke-width="1.5"
         />
-      </template>
-
-      <!-- Note head -->
-      <ellipse
-        v-if="notePosition !== null"
-        :cx="NOTE_X"
-        :cy="positionToY(notePosition)"
-        :rx="NOTE_RX"
-        :ry="NOTE_RY"
-        :transform="`rotate(-15, ${NOTE_X}, ${positionToY(notePosition)})`"
-        :fill="noteColor"
-        class="note-head"
-      />
-
-      <!-- Note stem: up when note is on or below middle line (pos ≤ 4), down otherwise -->
-      <line
-        v-if="notePosition !== null"
-        :x1="stemX1"
-        :y1="positionToY(notePosition)"
-        :x2="stemX1"
-        :y2="stemY2"
-        :stroke="noteColor"
-        stroke-width="1.8"
-      />
+        <!-- Note head -->
+        <ellipse
+          cx="0"
+          :cy="positionToY(item.pos)"
+          :rx="NOTE_RX"
+          :ry="NOTE_RY"
+          :transform="`rotate(-15, 0, ${positionToY(item.pos)})`"
+          :fill="noteFill(idx)"
+          class="note-head"
+        />
+        <!-- Stem -->
+        <line
+          :x1="stemOffX(item.pos)"
+          :y1="positionToY(item.pos)"
+          :x2="stemOffX(item.pos)"
+          :y2="stemEndY(item.pos)"
+          :stroke="noteFill(idx)"
+          stroke-width="1.8"
+        />
+      </g>
     </svg>
 
-    <!-- Feedback flash -->
+    <!-- Feedback badge (correct / wrong flash) -->
     <transition name="feedback">
       <div v-if="feedback" :class="['feedback-badge', feedback]">
         {{ feedback === 'correct' ? '✓' : '✗' }}
@@ -138,75 +111,81 @@
 import { computed } from 'vue'
 
 const props = defineProps({
-  notePosition: { type: Number, default: null },
-  clef: { type: String, default: 'sol' },
-  feedback: { type: String, default: null },
+  noteHistory: { type: Array, default: () => [] },
+  clef:        { type: String, default: 'sol' },
+  feedback:    { type: String, default: null },
 })
 
-const WIDTH = 320
+const WIDTH  = 320
 const HEIGHT = 200
-const NOTE_X = 200
 const NOTE_RX = 10
 const NOTE_RY = 7
 const STEM_LENGTH = 45
 
-const STAFF_TOP_Y = 55  // y of line 5 (top line)
-const LINE_SPACING = 16  // pixels between adjacent staff lines
+const STAFF_TOP_Y  = 55
+const LINE_SPACING = 16
 
-// Convert staff position to SVG y-coordinate.
-// pos 0 = line 1 (bottom), pos 8 = line 5 (top); odd positions = spaces.
+// x positions for the three note slots (old → old → current)
+const X_SLOTS = [95, 157, 220]
+
 function positionToY(pos) {
   return STAFF_TOP_Y + (8 - pos) * (LINE_SPACING / 2)
 }
-
-// y-coordinate for staff line n (1 = bottom … 5 = top)
 function lineY(n) {
   return positionToY((n - 1) * 2)
 }
 
-// Note color reflects feedback state
-const noteColor = computed(() => {
-  if (props.feedback === 'correct') return 'var(--success)'
-  if (props.feedback === 'wrong') return 'var(--error)'
-  return 'var(--text)'
-})
+// Show at most the last 3 history entries
+const displayItems = computed(() => props.noteHistory.slice(-3))
 
-// Stem goes up when note is at or below middle line (pos ≤ 4), down otherwise
-const stemX1 = computed(() => {
-  if (props.notePosition === null) return 0
-  return props.notePosition <= 4
-    ? NOTE_X + NOTE_RX - 1   // right side of head → stem up
-    : NOTE_X - NOTE_RX + 1   // left side of head  → stem down
-})
+// x coordinate for item at index idx within displayItems
+function slotX(idx) {
+  const offset = 3 - displayItems.value.length
+  return X_SLOTS[idx + offset]
+}
 
-const stemY2 = computed(() => {
-  if (props.notePosition === null) return 0
-  const y = positionToY(props.notePosition)
-  return props.notePosition <= 4 ? y - STEM_LENGTH : y + STEM_LENGTH
-})
+// Is this the current (rightmost / active) note?
+function isCurrent(idx) {
+  return idx === displayItems.value.length - 1
+}
 
-// Bass clef hook: open curved stroke starting at F line, arcing up and back.
-// Drawn as a stroke (no fill) anchored to the filled dot at the F line.
+// Fill color per note slot
+function noteFill(idx) {
+  if (isCurrent(idx)) {
+    if (props.feedback === 'correct') return 'var(--success)'
+    if (props.feedback === 'wrong')   return 'var(--error)'
+    return 'var(--text)'
+  }
+  // Past notes are always correct (notes only advance on a correct answer)
+  return 'var(--success)'
+}
+
+// Stem: goes up (from right side of head) when note is on or below middle line
+function stemOffX(pos) { return pos <= 4 ? NOTE_RX - 1 : -(NOTE_RX - 1) }
+function stemEndY(pos) {
+  const y = positionToY(pos)
+  return pos <= 4 ? y - STEM_LENGTH : y + STEM_LENGTH
+}
+
+// Ledger lines (positions relative to note group's origin at x=0)
+function ledgerAbove(pos) {
+  if (pos <= 8) return []
+  const r = []
+  for (let p = 10; p <= pos; p += 2) r.push(p)
+  return r
+}
+function ledgerBelow(pos) {
+  if (pos >= 0) return []
+  const r = []
+  for (let p = -2; p >= pos; p -= 2) r.push(p)
+  return r
+}
+
+// Bass clef hook path (anchored at F line, pos 6)
 const bassClefPath = computed(() => {
-  const fy  = positionToY(6)       // F line (line 4)
-  const top = positionToY(7) - 2   // target top of arc (just above space between lines 4-5)
+  const fy  = positionToY(6)
+  const top = positionToY(7) - 2
   return `M 13,${fy} C 13,${top - 4} 26,${top - 8} 32,${top} C 38,${top + 8} 36,${fy + 6} 26,${fy + 8}`
-})
-
-// Ledger lines above the staff
-const ledgerPositionsAbove = computed(() => {
-  if (props.notePosition === null || props.notePosition <= 8) return []
-  const lines = []
-  for (let p = 10; p <= props.notePosition; p += 2) lines.push(p)
-  return lines
-})
-
-// Ledger lines below the staff
-const ledgerPositionsBelow = computed(() => {
-  if (props.notePosition === null || props.notePosition >= 0) return []
-  const lines = []
-  for (let p = -2; p >= props.notePosition; p -= 2) lines.push(p)
-  return lines
 })
 </script>
 
@@ -226,15 +205,8 @@ const ledgerPositionsBelow = computed(() => {
   border-radius: 12px;
 }
 
-/* Staff lines and clef shapes adapt to dark/light via CSS variables */
-.staff-line {
-  stroke: var(--border);
-}
-
-.clef-shape {
-  fill: var(--text-muted);
-  stroke: var(--text-muted);
-}
+.staff-line  { stroke: var(--border); }
+.clef-shape  { fill: var(--text-muted); stroke: var(--text-muted); }
 
 .clef-sol {
   font-size: 70px;
@@ -242,9 +214,7 @@ const ledgerPositionsBelow = computed(() => {
   font-family: 'Segoe UI Symbol', 'Apple Symbols', 'Noto Music', 'FreeSerif', serif;
 }
 
-.note-head {
-  transition: fill 0.15s ease;
-}
+.note-head { transition: fill 0.15s ease; }
 
 .feedback-badge {
   position: absolute;
@@ -260,16 +230,13 @@ const ledgerPositionsBelow = computed(() => {
   font-weight: 700;
   color: white;
 }
+.feedback-badge.correct { background: var(--success); }
+.feedback-badge.wrong   { background: var(--error); }
 
-.feedback-badge.correct { background: #22c55e; }
-.feedback-badge.wrong   { background: #ef4444; }
-
-.feedback-enter-active,
-.feedback-leave-active {
+.feedback-enter-active, .feedback-leave-active {
   transition: opacity 0.2s ease, transform 0.2s ease;
 }
-.feedback-enter-from,
-.feedback-leave-to {
+.feedback-enter-from, .feedback-leave-to {
   opacity: 0;
   transform: scale(0.6);
 }

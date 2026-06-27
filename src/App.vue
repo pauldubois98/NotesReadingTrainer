@@ -47,7 +47,7 @@
       </div>
 
       <!-- Staff preview -->
-      <MusicStaff :note-position="previewPosition" :clef="clef" />
+      <MusicStaff :note-history="previewHistory" :clef="clef" />
 
       <button class="btn-primary btn-large" @click="startGame">{{ t.start }}</button>
     </div>
@@ -79,7 +79,7 @@
 
       <!-- Staff -->
       <div class="staff-area">
-        <MusicStaff :note-position="currentPosition" :clef="clef" :feedback="feedback" />
+        <MusicStaff :note-history="noteHistory" :clef="clef" :feedback="feedback" />
         <div v-if="paused" class="pause-overlay">{{ t.paused }}</div>
       </div>
 
@@ -197,7 +197,8 @@ function noteNameIndex(position, clefType) {
 
 // --- Game state ---
 const screen = ref('setup')
-const currentPosition = ref(null)
+const noteHistory = ref([])   // [{id, pos, result}], last item is always the current note
+let noteIdCounter = 0
 const feedback = ref(null)
 const correct = ref(0)
 const errors = ref(0)
@@ -208,7 +209,8 @@ let timerInterval = null
 const elapsedMs = ref(0)
 let feedbackTimeout = null
 
-const previewPosition = ref(4)
+const currentPos = computed(() => noteHistory.value.at(-1)?.pos ?? null)
+const previewHistory = computed(() => [{ id: -1, pos: 4, result: null }])
 
 // --- Computed ---
 const formattedTime = computed(() => {
@@ -237,8 +239,9 @@ function pickNextNote() {
   let pos
   do {
     pos = Math.floor(Math.random() * (MAX_POS - MIN_POS + 1)) + MIN_POS
-  } while (pos === currentPosition.value)
-  currentPosition.value = pos
+  } while (pos === currentPos.value)
+  const next = [...noteHistory.value, { id: noteIdCounter++, pos, result: null }]
+  noteHistory.value = next.slice(-3)
 }
 
 function startGame() {
@@ -249,6 +252,8 @@ function startGame() {
   paused.value = false
   noteStats.value = Array.from({ length: 7 }, () => ({ correct: 0, wrong: 0 }))
   feedback.value = null
+  noteHistory.value = []
+  noteIdCounter = 0
   pickNextNote()
   startTimer()
 }
@@ -268,13 +273,18 @@ function stopTimer() {
 
 function answer(noteIdx) {
   if (paused.value || feedback.value) return
-  const expected = noteNameIndex(currentPosition.value, clef.value)
+  if (currentPos.value === null) return
+  const expected = noteNameIndex(currentPos.value, clef.value)
   const isCorrect = noteIdx === expected
 
   if (isCorrect) {
     correct.value++
     noteStats.value[expected].correct++
     feedback.value = 'correct'
+    // Mark the current note as correct so it shows green when it slides to history
+    const h = [...noteHistory.value]
+    h[h.length - 1] = { ...h[h.length - 1], result: 'correct' }
+    noteHistory.value = h
   } else {
     errors.value++
     noteStats.value[expected].wrong++
@@ -290,7 +300,7 @@ function answer(noteIdx) {
 
 function answerClass(idx) {
   if (!feedback.value) return ''
-  const expected = noteNameIndex(currentPosition.value, clef.value)
+  const expected = noteNameIndex(currentPos.value, clef.value)
   if (feedback.value === 'correct' && idx === expected) return 'btn-correct'
   if (feedback.value === 'wrong'   && idx === expected) return 'btn-highlight'
   return ''
@@ -312,7 +322,7 @@ function stopGame() {
 
 function playAgain() {
   screen.value = 'setup'
-  currentPosition.value = null
+  noteHistory.value = []
 }
 
 onBeforeUnmount(() => {

@@ -15,3 +15,5 @@ The app should be able to select the instrument (in particular, clef de do and c
 Langauge should be at the very top right of the page; also add dark/light mode there.
 
 Add a skip button.
+
+Show the last 3 notes (shift to the left after submission).

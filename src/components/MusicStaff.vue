@@ -114,6 +114,7 @@ const props = defineProps({
   noteHistory: { type: Array, default: () => [] },
   clef:        { type: String, default: 'sol' },
   feedback:    { type: String, default: null },
+  maxHistory:  { type: Number, default: 3 },
 })
 
 const WIDTH  = 320
@@ -125,8 +126,8 @@ const STEM_LENGTH = 45
 const STAFF_TOP_Y  = 55
 const LINE_SPACING = 16
 
-// x positions for the three note slots (old → old → current)
-const X_SLOTS = [95, 157, 220]
+// x positions for up to 6 note slots (oldest → … → current)
+const X_SLOTS = [68, 106, 144, 182, 220, 258]
 
 function positionToY(pos) {
   return STAFF_TOP_Y + (8 - pos) * (LINE_SPACING / 2)
@@ -135,12 +136,17 @@ function lineY(n) {
   return positionToY((n - 1) * 2)
 }
 
-// Show at most the last 3 history entries
-const displayItems = computed(() => props.noteHistory.slice(-3))
+// Total visible slots = past notes (capped by maxHistory) + 1 current
+const MAX_SLOTS = 6  // hard visual maximum (X_SLOTS has 6 entries)
+
+const displayItems = computed(() => {
+  const limit = Math.min(props.maxHistory, MAX_SLOTS - 1) + 1  // past + current
+  return props.noteHistory.slice(-limit)
+})
 
 // x coordinate for item at index idx within displayItems
 function slotX(idx) {
-  const offset = 3 - displayItems.value.length
+  const offset = MAX_SLOTS - displayItems.value.length
   return X_SLOTS[idx + offset]
 }
 

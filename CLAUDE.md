@@ -17,3 +17,6 @@ Langauge should be at the very top right of the page; also add dark/light mode t
 Add a skip button.
 
 Show the last 3 notes (shift to the left after submission).
+
+In the menu, ther should be a slider to select how many pas notes to show (say 0-5).
+Also add a quit button that goes back to the menu directly.

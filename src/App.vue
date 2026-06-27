@@ -44,10 +44,18 @@
             >{{ t.instruments[id] }}</button>
           </div>
         </div>
+
+        <!-- Past notes slider -->
+        <div class="setting-group">
+          <label class="setting-label">
+            {{ t.pastNotes }} — <span class="slider-value">{{ maxHistory }}</span>
+          </label>
+          <input type="range" min="0" max="5" v-model.number="maxHistory" class="slider" />
+        </div>
       </div>
 
       <!-- Staff preview -->
-      <MusicStaff :note-history="previewHistory" :clef="clef" />
+      <MusicStaff :note-history="previewHistory" :clef="clef" :max-history="maxHistory" />
 
       <button class="btn-primary btn-large" @click="startGame">{{ t.start }}</button>
     </div>
@@ -79,7 +87,7 @@
 
       <!-- Staff -->
       <div class="staff-area">
-        <MusicStaff :note-history="noteHistory" :clef="clef" :feedback="feedback" />
+        <MusicStaff :note-history="noteHistory" :clef="clef" :feedback="feedback" :max-history="maxHistory" />
         <div v-if="paused" class="pause-overlay">{{ t.paused }}</div>
       </div>
 
@@ -101,6 +109,7 @@
         </button>
         <button class="btn-skip" :disabled="paused || !!feedback" @click="skipNote">{{ t.skip }}</button>
         <button class="btn-danger" @click="stopGame">{{ t.stop }}</button>
+        <button class="btn-quit" @click="quitGame">{{ t.quit }}</button>
       </div>
     </div>
 
@@ -170,6 +179,7 @@ const t = computed(() => useI18n(lang.value))
 // --- Settings ---
 const clef = ref('sol')
 const instrument = ref('piano')
+const maxHistory = ref(3)
 
 const availableInstruments = computed(() => INSTRUMENTS_BY_CLEF[clef.value] ?? [])
 
@@ -241,7 +251,7 @@ function pickNextNote() {
     pos = Math.floor(Math.random() * (MAX_POS - MIN_POS + 1)) + MIN_POS
   } while (pos === currentPos.value)
   const next = [...noteHistory.value, { id: noteIdCounter++, pos, result: null }]
-  noteHistory.value = next.slice(-3)
+  noteHistory.value = next.slice(-6) // keep enough for the max slider value (5 past + 1 current)
 }
 
 function startGame() {
@@ -281,7 +291,6 @@ function answer(noteIdx) {
     correct.value++
     noteStats.value[expected].correct++
     feedback.value = 'correct'
-    // Mark the current note as correct so it shows green when it slides to history
     const h = [...noteHistory.value]
     h[h.length - 1] = { ...h[h.length - 1], result: 'correct' }
     noteHistory.value = h
@@ -313,6 +322,14 @@ function skipNote() {
 }
 
 function togglePause() { paused.value = !paused.value }
+
+function quitGame() {
+  stopTimer()
+  if (feedbackTimeout) clearTimeout(feedbackTimeout)
+  feedback.value = null
+  noteHistory.value = []
+  screen.value = 'setup'
+}
 
 function stopGame() {
   stopTimer()
@@ -478,6 +495,29 @@ onBeforeUnmount(() => {
 }
 
 .btn-secondary:hover { background: var(--border); }
+
+.slider {
+  width: 100%;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+.slider-value {
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.btn-quit {
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  padding: 10px 16px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  flex: 1;
+}
+
+.btn-quit:hover { border-color: var(--text-muted); color: var(--text); }
 
 .btn-skip {
   background: transparent;

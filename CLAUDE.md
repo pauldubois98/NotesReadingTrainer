@@ -11,3 +11,5 @@ Make sure the online app runs both on computer and smart phone.
 
 The clef de do/sol/fa should appear on the 5 lines.
 The app should be able to select the instrument (in particular, clef de do and clef de sol should have piano available).
+
+Langauge should be at the very top right of the page; also add dark/light mode there.

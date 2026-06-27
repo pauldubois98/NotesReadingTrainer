@@ -1,24 +1,24 @@
 <template>
   <div class="app">
+    <!-- ── Top-right toolbar: language + theme ─────────────────── -->
+    <div class="topbar">
+      <button
+        v-for="l in ['fr', 'en']"
+        :key="l"
+        :class="['topbar-btn', { active: lang === l }]"
+        @click="lang = l"
+      >{{ l.toUpperCase() }}</button>
+      <button class="topbar-btn topbar-icon" @click="toggleTheme" :title="isDark ? 'Light mode' : 'Dark mode'">
+        {{ isDark ? '☀' : '☾' }}
+      </button>
+    </div>
+
     <!-- ── Setup screen ────────────────────────────────────────── -->
     <div v-if="screen === 'setup'" class="card setup-card">
       <h1 class="title">{{ t.title }}</h1>
       <p class="subtitle">{{ t.subtitle }}</p>
 
       <div class="settings">
-        <!-- Language -->
-        <div class="setting-group">
-          <label class="setting-label">{{ t.language }}</label>
-          <div class="toggle-group">
-            <button
-              v-for="l in ['fr', 'en']"
-              :key="l"
-              :class="['toggle-btn', { active: lang === l }]"
-              @click="lang = l"
-            >{{ l.toUpperCase() }}</button>
-          </div>
-        </div>
-
         <!-- Clef -->
         <div class="setting-group">
           <label class="setting-label">{{ t.clef }}</label>
@@ -154,6 +154,13 @@
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import MusicStaff from './components/MusicStaff.vue'
 import { useI18n, INSTRUMENTS_BY_CLEF } from './i18n.js'
+
+// --- Theme ---
+const isDark = ref(true)
+function toggleTheme() {
+  isDark.value = !isDark.value
+  document.documentElement.classList.toggle('light', !isDark.value)
+}
 
 // --- i18n ---
 const lang = ref('fr')
@@ -315,6 +322,43 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   padding: 16px;
+  padding-top: 56px;
+}
+
+/* Top-right toolbar */
+.topbar {
+  position: fixed;
+  top: 12px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  z-index: 100;
+}
+
+.topbar-btn {
+  padding: 5px 10px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+
+.topbar-btn.active {
+  background: var(--primary);
+  color: white;
+}
+
+.topbar-btn:hover:not(.active) {
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.topbar-icon {
+  font-size: 1rem;
+  padding: 5px 9px;
 }
 
 .card {

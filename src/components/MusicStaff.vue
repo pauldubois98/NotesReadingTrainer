@@ -10,7 +10,7 @@
         :y1="lineY(i)"
         :x2="WIDTH - 20"
         :y2="lineY(i)"
-        stroke="#cbd5e1"
+        class="staff-line"
         stroke-width="1.5"
       />
 
@@ -29,16 +29,16 @@
       <!-- F is on line 4 (pos 6). Starting dot + upward curved stroke + 2 reference dots. -->
       <g v-else-if="clef === 'fa'">
         <!-- Starting filled dot at F line -->
-        <circle :cx="13" :cy="positionToY(6)" r="5.5" fill="#94a3b8" />
+        <circle :cx="13" :cy="positionToY(6)" r="5.5" class="clef-shape" />
         <!-- Curved hook stroke arcing from F line upward then back down -->
         <path
           :d="bassClefPath"
-          fill="none" stroke="#94a3b8" stroke-width="3.5" stroke-linecap="round"
+          fill="none" class="clef-shape" stroke-width="3.5" stroke-linecap="round"
         />
         <!-- Upper reference dot: space between lines 4 and 5 (pos 7) -->
-        <circle :cx="44" :cy="positionToY(7)" r="3" fill="#94a3b8" />
+        <circle :cx="44" :cy="positionToY(7)" r="3" class="clef-shape" />
         <!-- Lower reference dot: space between lines 3 and 4 (pos 5) -->
-        <circle :cx="44" :cy="positionToY(5)" r="3" fill="#94a3b8" />
+        <circle :cx="44" :cy="positionToY(5)" r="3" class="clef-shape" />
       </g>
 
       <!-- ── Alto C clef (Do) ────────────────────────────────── -->
@@ -50,26 +50,26 @@
           :x="4" :y="positionToY(8) - 2"
           width="7"
           :height="positionToY(0) - positionToY(8) + 4"
-          rx="2" fill="#94a3b8"
+          rx="2" class="clef-shape"
         />
         <!-- Upper arm: from top of staff (line 5) down to C line (line 3) -->
         <line
           :x1="11" :y1="positionToY(8)"
           :x2="37" :y2="positionToY(4)"
-          stroke="#94a3b8" stroke-width="4.5" stroke-linecap="round"
+          class="clef-shape" stroke-width="4.5" stroke-linecap="round"
         />
         <!-- Lower arm: from bottom of staff (line 1) up to C line -->
         <line
           :x1="11" :y1="positionToY(0)"
           :x2="37" :y2="positionToY(4)"
-          stroke="#94a3b8" stroke-width="4.5" stroke-linecap="round"
+          class="clef-shape" stroke-width="4.5" stroke-linecap="round"
         />
         <!-- Right small bar: from one space above C to one space below -->
         <rect
           :x="35" :y="positionToY(6)"
           width="5"
           :height="positionToY(2) - positionToY(6)"
-          rx="2" fill="#94a3b8"
+          rx="2" class="clef-shape"
         />
       </g>
 
@@ -82,7 +82,7 @@
           :y1="positionToY(pos)"
           :x2="NOTE_X + NOTE_RX + 6"
           :y2="positionToY(pos)"
-          stroke="#cbd5e1"
+          class="staff-line"
           stroke-width="1.5"
         />
       </template>
@@ -96,7 +96,7 @@
           :y1="positionToY(pos)"
           :x2="NOTE_X + NOTE_RX + 6"
           :y2="positionToY(pos)"
-          stroke="#cbd5e1"
+          class="staff-line"
           stroke-width="1.5"
         />
       </template>
@@ -166,9 +166,9 @@ function lineY(n) {
 
 // Note color reflects feedback state
 const noteColor = computed(() => {
-  if (props.feedback === 'correct') return '#22c55e'
-  if (props.feedback === 'wrong') return '#ef4444'
-  return '#e2e8f0'
+  if (props.feedback === 'correct') return 'var(--success)'
+  if (props.feedback === 'wrong') return 'var(--error)'
+  return 'var(--text)'
 })
 
 // Stem goes up when note is at or below middle line (pos ≤ 4), down otherwise
@@ -222,13 +222,23 @@ const ledgerPositionsBelow = computed(() => {
   width: 100%;
   max-width: 420px;
   height: auto;
-  background: #1e293b;
+  background: var(--surface);
   border-radius: 12px;
+}
+
+/* Staff lines and clef shapes adapt to dark/light via CSS variables */
+.staff-line {
+  stroke: var(--border);
+}
+
+.clef-shape {
+  fill: var(--text-muted);
+  stroke: var(--text-muted);
 }
 
 .clef-sol {
   font-size: 70px;
-  fill: #94a3b8;
+  fill: var(--text-muted);
   font-family: 'Segoe UI Symbol', 'Apple Symbols', 'Noto Music', 'FreeSerif', serif;
 }
 

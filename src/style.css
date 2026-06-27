@@ -15,9 +15,21 @@
   --primary-hover: #4f46e5;
   --success: #22c55e;
   --error: #ef4444;
-  --warning: #f59e0b;
   --radius: 12px;
   --radius-sm: 8px;
+}
+
+:root.light {
+  --bg: #f1f5f9;
+  --surface: #ffffff;
+  --surface-2: #e2e8f0;
+  --border: #cbd5e1;
+  --text: #0f172a;
+  --text-muted: #64748b;
+  --primary: #6366f1;
+  --primary-hover: #4f46e5;
+  --success: #16a34a;
+  --error: #dc2626;
 }
 
 body {
@@ -25,9 +37,7 @@ body {
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  transition: background 0.2s ease, color 0.2s ease;
 }
 
 #app {

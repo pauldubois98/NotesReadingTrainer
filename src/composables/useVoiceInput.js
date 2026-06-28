@@ -1,60 +1,60 @@
-import { ref, watch, onUnmounted } from 'vue'
+import { ref, onUnmounted } from 'vue'
 import WhisperWorker from '../workers/whisperWorker.js?worker'
 
-// Maps browser transcription variants → canonical lowercase note name
+// Aliases derived from empirical whisper-small FR output on the 7 note recordings.
+// Repeated chars are collapsed before lookup ("Dooooo" → "do", "Faaah" → "fah").
 const ALIASES = {
-  do: 'do', doe: 'do',
+  do: 'do', doe: 'do', dou: 'do',
   ré: 'ré', re: 'ré', ray: 'ré', reh: 'ré',
-  mi: 'mi', me: 'mi',
-  fa: 'fa',
-  sol: 'sol', soul: 'sol', sole: 'sol',
-  la: 'la',
+  mi: 'mi', me: 'mi', mee: 'mi',
+  fa: 'fa', fah: 'fa', fuh: 'fa', far: 'fa',
+  sol: 'sol', so: 'sol', soul: 'sol', sole: 'sol',
+  la: 'la', là: 'la', lah: 'la',
   si: 'si', see: 'si', sea: 'si',
 }
 
 const NOTE_INDEX = { do: 0, ré: 1, mi: 2, fa: 3, sol: 4, la: 5, si: 6 }
 
+// Collapse repeated chars ("Dooooo" → "do") then strip non-letter chars
+function normalizeWord(raw) {
+  return raw
+    .toLowerCase()
+    .replace(/(.)\1+/g, '$1')           // "oooo" → "o"
+    .replace(/[^a-zàâéèêëîïôùûüç]/g, '') // keep only letters
+}
+
 function extractNote(transcript) {
-  for (const word of transcript.trim().toLowerCase().split(/\s+/)) {
-    const canonical = ALIASES[word.replace(/[^a-zé]/g, '')]
+  for (const word of transcript.trim().split(/\s+/)) {
+    const canonical = ALIASES[normalizeWord(word)]
     if (canonical !== undefined) return canonical
   }
   return null
 }
 
-// Target sample rate Whisper expects
 const WHISPER_SR = 16000
 
 export function useVoiceInput({ lang, onNote, micThreshold }) {
   const isSupported   = ref(true)
   const isListening   = ref(false)
   const lastHeard     = ref('')
+  const rawTranscript = ref('')
   const modelProgress = ref(0)
-  const micLevel        = ref(0)     // live RMS 0-1 for the UI meter
-  const rawTranscript  = ref('')    // last raw Whisper output (debug)
-  const isRecordingPTT = ref(false) // true while Space is held
-  // 'loading' | 'webgpu' | 'wasm'
-  const deviceType     = ref('loading')
+  const micLevel      = ref(0)
+  const deviceType    = ref('loading')
 
   // ── Worker ───────────────────────────────────────────────────────
   let worker = new WhisperWorker()
   let workerReady = false
 
   worker.onmessage = (e) => {
-    if (e.data.type === 'progress') {
-      modelProgress.value = e.data.pct
-    }
+    if (e.data.type === 'progress') modelProgress.value = e.data.pct
     if (e.data.type === 'ready') {
       modelProgress.value = 100
-      deviceType.value = e.data.device   // 'webgpu' | 'wasm'
+      deviceType.value = e.data.device
       workerReady = true
     }
-    if (e.data.type === 'result') {
-      handleResult(e.data.text)
-    }
+    if (e.data.type === 'result') handleResult(e.data.text)
   }
-
-  // Start model download immediately (cached after first run)
   worker.postMessage({ type: 'init' })
 
   // ── Result handling ──────────────────────────────────────────────
@@ -63,7 +63,7 @@ export function useVoiceInput({ lang, onNote, micThreshold }) {
 
   function handleResult(text) {
     processingLocked = false
-    rawTranscript.value = text.trim()           // always show what Whisper said
+    rawTranscript.value = text.trim()
     const canonical = extractNote(text)
     if (!canonical) return
     lastHeard.value = canonical
@@ -72,19 +72,28 @@ export function useVoiceInput({ lang, onNote, micThreshold }) {
     onNote(NOTE_INDEX[canonical])
   }
 
-  // ── Audio capture + VAD ──────────────────────────────────────────
-  let audioCtx    = null
-  let analyser    = null
-  let processor   = null   // ScriptProcessorNode (widely supported)
-  let stream      = null
+  // ── Audio capture ────────────────────────────────────────────────
+  let audioCtx  = null
+  let analyser  = null
+  let processor = null
+  let stream    = null
 
   // VAD state
-  let speaking     = false
+  let speaking      = false
   let silenceFrames = 0
   let speechFrames  = 0
   let pcmBuffer     = []
-  const SILENCE_FRAMES   = 20   // ~600 ms silence → end of utterance
-  const SPEECH_MIN_FRAMES = 3   // ignore pops shorter than ~90 ms
+
+  // Adaptive noise floor — calibrates to room noise over first ~30 frames (~1 s)
+  let noiseFloor      = 0.015
+  let noiseCalFrames  = 0
+  const NOISE_CAL_FRAMES  = 30   // frames used for initial calibration
+  const NOISE_FLOOR_MULT  = 3.5  // threshold = noiseFloor × this
+  const MIN_THRESHOLD     = 0.012
+
+  const SILENCE_FRAMES    = 18   // ~580 ms of silence → end of utterance
+  const SPEECH_MIN_FRAMES = 3    // ignore pops shorter than ~100 ms
+  const MAX_SPEECH_FRAMES = 90   // ~3 s max utterance; send even without silence
 
   async function startCapture() {
     audioCtx = new AudioContext({ sampleRate: WHISPER_SR })
@@ -95,12 +104,14 @@ export function useVoiceInput({ lang, onNote, micThreshold }) {
     analyser.fftSize = 512
     source.connect(analyser)
 
-    // ScriptProcessorNode collects raw PCM at WHISPER_SR
     processor = audioCtx.createScriptProcessor(512, 1, 1)
     analyser.connect(processor)
     processor.connect(audioCtx.destination)
 
     const timeDomain = new Float32Array(analyser.fftSize)
+
+    // Reset noise calibration on each new capture session
+    noiseFloor = 0.015; noiseCalFrames = 0
 
     processor.onaudioprocess = (ev) => {
       if (!isListening.value || !workerReady || processingLocked) return
@@ -108,34 +119,43 @@ export function useVoiceInput({ lang, onNote, micThreshold }) {
       analyser.getFloatTimeDomainData(timeDomain)
       const rms = Math.sqrt(timeDomain.reduce((s, v) => s + v * v, 0) / timeDomain.length)
 
-      // Adjust energy threshold via micThreshold slider (0 = off = 0.012 floor)
-      // Slider is "sensitivity": 0% = quietest mic (highest threshold),
-      // 90% = most sensitive (lowest threshold catches soft speech)
+      // Adaptive noise floor: average quiet frames at start to estimate ambient level
+      if (!speaking && noiseCalFrames < NOISE_CAL_FRAMES) {
+        noiseFloor = (noiseFloor * noiseCalFrames + rms) / (noiseCalFrames + 1)
+        noiseCalFrames++
+      }
+
+      // Slider (0–90) shifts threshold: 0 = 3.5× noiseFloor, 90 = 1.5× noiseFloor
       const sliderPct = (micThreshold?.value ?? 0) / 100
-      const energyThreshold = 0.10 - sliderPct * 0.088   // 0% → 0.10,  90% → 0.012
+      const multiplier = NOISE_FLOOR_MULT - sliderPct * 2   // 3.5 → 1.5
+      const energyThreshold = Math.max(noiseFloor * multiplier, MIN_THRESHOLD)
+
+      micLevel.value = Math.min(rms * 4, 1)
 
       const pcm = ev.inputBuffer.getChannelData(0)
 
-      // Normalise RMS to 0-1 for the UI meter (speech ≈ 0.05-0.3 → scale ×4)
-      micLevel.value = Math.min(rms * 4, 1)
-
-      // Push-to-talk capture — always runs while mic is open
-      if (pttActive) pttBuffer.push(...pcm)
-
       if (rms > energyThreshold) {
         if (!speaking) { speaking = true; speechFrames = 0; pcmBuffer = [] }
-        speechFrames++
-        silenceFrames = 0
+        speechFrames++; silenceFrames = 0
         pcmBuffer.push(...pcm)
+
+        // Safety valve: send after max utterance length even without silence
+        if (speechFrames >= MAX_SPEECH_FRAMES) {
+          speaking = false
+          processingLocked = true
+          worker.postMessage({ type: 'transcribe', audio: new Float32Array(pcmBuffer), samplingRate: WHISPER_SR, lang: lang.value })
+          pcmBuffer = []; speechFrames = 0; silenceFrames = 0
+          // Re-calibrate noise floor after sending
+          noiseCalFrames = 0
+        }
       } else if (speaking) {
         silenceFrames++
-        pcmBuffer.push(...pcm)   // include trailing silence for natural word boundary
+        pcmBuffer.push(...pcm)
         if (silenceFrames > SILENCE_FRAMES) {
           speaking = false
           if (speechFrames > SPEECH_MIN_FRAMES) {
             processingLocked = true
-            const audio = new Float32Array(pcmBuffer)
-            worker.postMessage({ type: 'transcribe', audio, samplingRate: WHISPER_SR, lang: lang.value })
+            worker.postMessage({ type: 'transcribe', audio: new Float32Array(pcmBuffer), samplingRate: WHISPER_SR, lang: lang.value })
           }
           pcmBuffer = []; silenceFrames = 0; speechFrames = 0
         }
@@ -151,41 +171,9 @@ export function useVoiceInput({ lang, onNote, micThreshold }) {
     speaking = false; pcmBuffer = []; silenceFrames = 0; speechFrames = 0
     processingLocked = false
     micLevel.value = 0
+    noiseFloor = 0.015; noiseCalFrames = 0
   }
 
-  // ── Push-to-talk (Space key) ─────────────────────────────────────
-  // Bypasses the VAD entirely: record while Space is held, send on release.
-  let pttActive = false
-  let pttBuffer = []
-
-  function onKeyDown(e) {
-    if (e.code !== 'Space' || e.repeat) return
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return
-    if (!workerReady || processingLocked) return
-    if (!audioCtx) return          // mic not yet open
-    e.preventDefault()
-    pttActive = true
-    pttBuffer = []
-    isRecordingPTT.value = true
-  }
-
-  function onKeyUp(e) {
-    if (e.code !== 'Space' || !pttActive) return
-    e.preventDefault()
-    pttActive = false
-    isRecordingPTT.value = false
-    if (pttBuffer.length > 0 && !processingLocked) {
-      processingLocked = true
-      const audio = new Float32Array(pttBuffer)
-      worker.postMessage({ type: 'transcribe', audio, samplingRate: WHISPER_SR, lang: lang.value })
-    }
-    pttBuffer = []
-  }
-
-  window.addEventListener('keydown', onKeyDown)
-  window.addEventListener('keyup',   onKeyUp)
-
-  // ── Public API ───────────────────────────────────────────────────
   function toggle() {
     if (isListening.value) {
       isListening.value = false
@@ -197,12 +185,10 @@ export function useVoiceInput({ lang, onNote, micThreshold }) {
   }
 
   onUnmounted(() => {
-    window.removeEventListener('keydown', onKeyDown)
-    window.removeEventListener('keyup',   onKeyUp)
     stopCapture()
     worker?.terminate()
     clearTimeout(heardTimer)
   })
 
-  return { isSupported, isListening, isRecordingPTT, lastHeard, rawTranscript, modelProgress, deviceType, micLevel, toggle }
+  return { isSupported, isListening, lastHeard, rawTranscript, modelProgress, deviceType, micLevel, toggle }
 }

@@ -116,22 +116,14 @@
         </span>
       </div>
 
-      <!-- Voice status row -->
-      <div class="voice-status-row">
-        <!-- PTT hint / recording flash -->
-        <div v-if="isListening" class="ptt-hint" :class="{ recording: isRecordingPTT }">
-          {{ isRecordingPTT ? '⏺ ' + t.pttRecording : t.pttHint }}
-        </div>
-
-        <!-- Heard / raw transcript -->
-        <div class="voice-heard" :class="{ visible: lastHeard || rawTranscript }">
-          <template v-if="lastHeard">
-            {{ t.voiceHeard }}: <strong>{{ lastHeard }}</strong>
-          </template>
-          <template v-else-if="rawTranscript">
-            🔍 "<em>{{ rawTranscript }}</em>"
-          </template>
-        </div>
+      <!-- Voice heard / raw transcript -->
+      <div class="voice-heard" :class="{ visible: lastHeard || rawTranscript }">
+        <template v-if="lastHeard">
+          {{ t.voiceHeard }}: <strong>{{ lastHeard }}</strong>
+        </template>
+        <template v-else-if="rawTranscript">
+          🔍 "<em>{{ rawTranscript }}</em>"
+        </template>
       </div>
 
       <!-- Controls -->
@@ -141,7 +133,7 @@
         </button>
         <button
           v-if="voiceSupported"
-          :class="['btn-mic', { active: isListening, recording: isRecordingPTT }]"
+          :class="['btn-mic', { active: isListening }]"
           :title="isListening ? t.voiceOff : t.voiceOn"
           :disabled="paused || modelProgress < 100"
           @click="toggleVoice"
@@ -413,7 +405,7 @@ const thresholdFraction = computed(() => {
 })
 
 // --- Voice input ---
-const { isSupported: voiceSupported, isListening, isRecordingPTT, lastHeard, rawTranscript, modelProgress, deviceType, micLevel, toggle: toggleVoice } =
+const { isSupported: voiceSupported, isListening, lastHeard, rawTranscript, modelProgress, deviceType, micLevel, toggle: toggleVoice } =
   useVoiceInput({ lang, onNote: answer, micThreshold })
 
 onBeforeUnmount(() => {
@@ -591,7 +583,6 @@ onBeforeUnmount(() => {
   flex: 0 0 auto;
 }
 .btn-mic.active { border-color: var(--primary); color: var(--primary); animation: pulse-mic 1.8s ease infinite; }
-.btn-mic.recording { border-color: var(--error); color: var(--error); animation: none; background: color-mix(in srgb, var(--error) 12%, var(--surface-2)); }
 .btn-mic:disabled { opacity: 0.4; cursor: not-allowed; }
 
 @keyframes pulse-mic {
@@ -675,30 +666,6 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 6px;
   padding: 4px 2px 0;
-}
-
-.voice-status-row {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  min-height: 2.4em;
-}
-
-.ptt-hint {
-  font-size: 0.72rem;
-  color: var(--text-muted);
-  letter-spacing: 0.03em;
-}
-
-.ptt-hint.recording {
-  color: var(--error);
-  font-weight: 600;
-  animation: blink 0.7s step-start infinite;
-}
-
-@keyframes blink {
-  50% { opacity: 0.3; }
 }
 
 .voice-heard {

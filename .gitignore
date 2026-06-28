@@ -4,7 +4,5 @@ dist/
 .DS_Store
 
 # Generated files — run ./setup.sh to recreate
-public/kws_model.onnx
+public/kws_model.json
 public/kws_config.json
-public/ort-wasm*.wasm
-public/ort-wasm*.mjs

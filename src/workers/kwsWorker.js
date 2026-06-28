@@ -84,7 +84,7 @@ function trimSilence(samples) {
     if (rms[t] > peakRms) peakRms = rms[t]
   }
 
-  const threshold = peakRms * 0.10
+  const threshold = peakRms * 0.05
   let onset  = 0
   let offset = nFrames - 1
   for (let t = 0;           t < nFrames; t++)  { if (rms[t] >= threshold) { onset  = t; break } }

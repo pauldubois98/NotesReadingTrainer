@@ -141,6 +141,23 @@ def augment(samples):
 
 # ── Feature extraction ────────────────────────────────────────────────────────
 
+def trim_silence(samples, ratio=0.05):
+    """Trim leading/trailing silence — mirrors trimSilence() in kwsWorker.js."""
+    frame_len = HOP
+    n_frames  = len(samples) // frame_len
+    if n_frames == 0:
+        return samples
+    rms = np.array([np.sqrt(np.mean(samples[t*frame_len:(t+1)*frame_len] ** 2) + 1e-12)
+                    for t in range(n_frames)])
+    threshold = rms.max() * ratio
+    active    = np.where(rms >= threshold)[0]
+    if len(active) == 0:
+        return samples
+    onset  = max(0,          active[0]  - 2)
+    offset = min(n_frames-1, active[-1] + 2)
+    return samples[onset * frame_len : (offset + 1) * frame_len]
+
+
 def mel_spec(samples):
     need = (N_FRAMES - 1) * HOP + N_FFT
     if len(samples) < need:
@@ -164,7 +181,7 @@ def extract_features(samples):
       [128 : 192] onset mean      (first 20 frames ≈ 200 ms)
       [192 : 256] mean abs delta  frame-to-frame change (spectral dynamics)
     """
-    S       = mel_spec(samples)
+    S       = mel_spec(trim_silence(samples))
     g_mean  = S.mean(axis=1)
     g_std   = S.std(axis=1)
     o_mean  = S[:, :20].mean(axis=1)

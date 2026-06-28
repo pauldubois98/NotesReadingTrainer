@@ -10,7 +10,8 @@ Usage:
     python3 train_model.py
 
 Outputs:
-    public/kws_model.json   — weights + feature params for JS worker
+    public/kws_model.json        — weights + feature params for JS worker
+    training/training_curves.png — loss & accuracy plots
 """
 
 import json
@@ -18,6 +19,9 @@ import os
 import random
 import wave
 
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
@@ -33,11 +37,11 @@ HOP      = 160      # 10 ms
 N_MELS   = 64
 N_FRAMES = 100      # 1 second
 
-# Features per mel band: global mean, global std, onset mean (first 20 frames)
-N_FEAT   = N_MELS * 3   # 192
+N_FEAT   = N_MELS * 3   # 192: global mean + global std + onset mean
 
 SPLIT_DIR = 'training/split'
-OUT       = 'public/kws_model.json'
+OUT_MODEL = 'public/kws_model.json'
+OUT_PLOT  = 'training/training_curves.png'
 
 BATCH  = 32
 EPOCHS = 120
@@ -46,8 +50,8 @@ SEED   = 42
 
 # ── Mel filterbank ────────────────────────────────────────────────────────────
 
-def _hz2mel(f):  return 2595 * np.log10(1 + f / 700)
-def _mel2hz(m):  return 700 * (10 ** (m / 2595) - 1)
+def _hz2mel(f): return 2595 * np.log10(1 + f / 700)
+def _mel2hz(m): return 700 * (10 ** (m / 2595) - 1)
 
 def build_filterbank(sr=SR, n_fft=N_FFT, n_mels=N_MELS, fmin=80, fmax=7600):
     mels = np.linspace(_hz2mel(fmin), _hz2mel(fmax), n_mels + 2)
@@ -64,7 +68,7 @@ def build_filterbank(sr=SR, n_fft=N_FFT, n_mels=N_MELS, fmin=80, fmax=7600):
 FILTERBANK = build_filterbank()
 WINDOW     = np.hanning(N_FFT).astype(np.float32)
 
-# ── Feature extraction ────────────────────────────────────────────────────────
+# ── Audio helpers ─────────────────────────────────────────────────────────────
 
 def load_wav(path):
     with wave.open(path) as wf:
@@ -72,6 +76,70 @@ def load_wav(path):
         raw = wf.readframes(wf.getnframes())
     return np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
 
+
+def _resample(samples, n_out):
+    """Linear-interpolation resample to exactly n_out samples."""
+    n_in = len(samples)
+    if n_in == n_out:
+        return samples.copy()
+    t  = np.linspace(0, n_in - 1, n_out)
+    lo = np.floor(t).astype(int)
+    hi = np.minimum(lo + 1, n_in - 1)
+    return (samples[lo] * (1 - (t - lo)) + samples[hi] * (t - lo)).astype(np.float32)
+
+# ── Augmentation ──────────────────────────────────────────────────────────────
+
+def pitch_shift(samples, semitones):
+    """
+    Shift pitch by ±semitones without changing duration.
+    Two-stage resampling: speed-change then revert to original length.
+    Positive semitones = higher pitch (brighter voice).
+    """
+    factor       = 2 ** (semitones / 12)
+    intermediate = _resample(samples, max(1, int(len(samples) * factor)))
+    return _resample(intermediate, len(samples))
+
+
+def tempo_stretch(samples, rate):
+    """
+    Stretch tempo by rate without changing pitch.
+    rate > 1 = faster (shorter audio), rate < 1 = slower (longer audio).
+    Two-stage resampling: duration change then resample back to original pitch.
+    extract_features will pad/truncate to N_FRAMES regardless of output length.
+    """
+    n_stretched  = max(1, int(len(samples) / rate))
+    intermediate = _resample(samples, n_stretched)
+    # Resample back to original length to undo pitch shift introduced by stage 1
+    return _resample(intermediate, len(samples))
+
+
+def augment(samples):
+    # Random gain ±50 %
+    samples = samples * random.uniform(0.5, 1.5)
+
+    # Pitch shift ±3 semitones (applied ~60 % of the time)
+    if random.random() < 0.6:
+        semitones = random.uniform(-3, 3)
+        samples   = pitch_shift(samples, semitones)
+
+    # Tempo stretch 85 %–115 % (applied ~60 % of the time)
+    if random.random() < 0.6:
+        rate    = random.uniform(0.85, 1.15)
+        samples = tempo_stretch(samples, rate)
+
+    # Time shift ±100 ms
+    shift = random.randint(-1600, 1600)
+    if shift > 0:
+        samples = np.concatenate([np.zeros(shift, dtype=np.float32), samples])
+    elif shift < 0:
+        samples = samples[-shift:]
+
+    # Additive Gaussian noise (up to σ = 0.015)
+    samples += np.random.randn(len(samples)).astype(np.float32) * random.uniform(0, 0.015)
+
+    return samples
+
+# ── Feature extraction ────────────────────────────────────────────────────────
 
 def mel_spec(samples):
     need = (N_FRAMES - 1) * HOP + N_FFT
@@ -90,37 +158,18 @@ def mel_spec(samples):
 
 def extract_features(samples):
     """
-    Returns a 1-D feature vector of length N_FEAT (192).
-    Same computation will be reproduced in the JS worker.
-      [0  : 64]  global mean  of log-mel over time
-      [64 : 128] global std   of log-mel over time
-      [128: 192] onset  mean  (first 20 frames ≈ 200 ms)
+    192-D feature vector — same computation reproduced in the JS worker.
+      [0   : 64]  global mean  of log-mel over time
+      [64  : 128] global std   of log-mel over time
+      [128 : 192] onset  mean  (first 20 frames ≈ 200 ms)
     """
-    S       = mel_spec(samples)             # (64, 100)
-    g_mean  = S.mean(axis=1)               # (64,)
-    g_std   = S.std(axis=1)                # (64,)
-    o_mean  = S[:, :20].mean(axis=1)       # (64,)  — consonant onset
-
-    feat = np.concatenate([g_mean, g_std, o_mean])   # (192,)
-
-    # Per-sample normalisation
-    mu  = feat.mean()
-    sig = feat.std() + 1e-6
+    S      = mel_spec(samples)
+    g_mean = S.mean(axis=1)
+    g_std  = S.std(axis=1)
+    o_mean = S[:, :20].mean(axis=1)
+    feat   = np.concatenate([g_mean, g_std, o_mean])
+    mu, sig = feat.mean(), feat.std() + 1e-6
     return (feat - mu) / sig
-
-
-# ── Augmentation ──────────────────────────────────────────────────────────────
-
-def augment(samples):
-    samples = samples * random.uniform(0.5, 1.5)
-    shift   = random.randint(-1600, 1600)
-    if shift > 0:
-        samples = np.concatenate([np.zeros(shift, dtype=np.float32), samples])
-    elif shift < 0:
-        samples = samples[-shift:]
-    samples += np.random.randn(len(samples)).astype(np.float32) * random.uniform(0, 0.008)
-    return samples
-
 
 # ── Dataset ───────────────────────────────────────────────────────────────────
 
@@ -135,9 +184,7 @@ class NoteDS(Dataset):
         path, label = self.items[i]
         s = load_wav(path)
         if self.do_aug: s = augment(s)
-        f = extract_features(s)
-        return torch.tensor(f), label
-
+        return torch.tensor(extract_features(s)), label
 
 # ── Model ─────────────────────────────────────────────────────────────────────
 
@@ -152,11 +199,39 @@ class MLP(nn.Module):
 
     def forward(self, x): return self.net(x)
 
+# ── Plotting ──────────────────────────────────────────────────────────────────
+
+def save_plots(history):
+    epochs = range(1, len(history['train_loss']) + 1)
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
+
+    ax1.plot(epochs, history['train_loss'], label='Train loss')
+    ax1.set_xlabel('Epoch'); ax1.set_ylabel('Loss')
+    ax1.set_title('Training loss'); ax1.legend(); ax1.grid(True, alpha=0.3)
+
+    ax2.plot(epochs, [a * 100 for a in history['train_acc']], label='Train acc')
+    ax2.plot(epochs, [a * 100 for a in history['val_acc']],   label='Val acc')
+    ax2.axhline(max(a * 100 for a in history['val_acc']), color='grey',
+                linestyle='--', linewidth=0.8, label=f"Best val {max(history['val_acc']):.1%}")
+    ax2.set_xlabel('Epoch'); ax2.set_ylabel('Accuracy (%)')
+    ax2.set_title('Accuracy'); ax2.legend(); ax2.grid(True, alpha=0.3)
+    ax2.set_ylim(0, 105)
+
+    plt.tight_layout()
+    os.makedirs('training', exist_ok=True)
+    plt.savefig(OUT_PLOT, dpi=120)
+    plt.close()
+    print(f"Saved → {OUT_PLOT}")
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 def main():
     random.seed(SEED); np.random.seed(SEED); torch.manual_seed(SEED)
+
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    print(f"\nDevice: {device}")
+    if device == 'cuda':
+        print(f"  GPU: {torch.cuda.get_device_name(0)}")
 
     all_items = []
     print("\nSamples per class:")
@@ -177,40 +252,57 @@ def main():
     train_dl = DataLoader(NoteDS(train_items, do_aug=True),  batch_size=BATCH, shuffle=True,  num_workers=4)
     val_dl   = DataLoader(NoteDS(val_items,   do_aug=False), batch_size=BATCH, shuffle=False, num_workers=2)
 
-    model = MLP(n_in=N_FEAT, n_classes=len(NOTES))
+    model = MLP(n_in=N_FEAT, n_classes=len(NOTES)).to(device)
+    print(f"Parameters: {sum(p.numel() for p in model.parameters()):,}\n")
+
     opt   = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=1e-4)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=EPOCHS)
     crit  = nn.CrossEntropyLoss()
 
     best_acc, best_state = 0.0, None
+    history = {'train_loss': [], 'train_acc': [], 'val_acc': []}
 
     for ep in range(1, EPOCHS + 1):
         model.train()
-        t_ok = t_n = 0
+        t_loss = t_ok = t_n = 0
         for X, y in train_dl:
+            X, y = X.to(device), y.to(device)
             opt.zero_grad()
             logits = model(X)
             loss   = crit(logits, y)
             loss.backward(); opt.step()
-            t_ok += (logits.argmax(1) == y).sum().item(); t_n += len(y)
+            t_loss += loss.item() * len(y)
+            t_ok   += (logits.argmax(1) == y).sum().item()
+            t_n    += len(y)
         sched.step()
 
         model.eval()
         v_ok = v_n = 0
         with torch.no_grad():
             for X, y in val_dl:
-                v_ok += (model(X).argmax(1) == y).sum().item(); v_n += len(y)
+                X, y = X.to(device), y.to(device)
+                v_ok += (model(X).argmax(1) == y).sum().item()
+                v_n  += len(y)
+
+        t_acc = t_ok / t_n
         v_acc = v_ok / v_n
+        history['train_loss'].append(t_loss / t_n)
+        history['train_acc'].append(t_acc)
+        history['val_acc'].append(v_acc)
+
         if v_acc > best_acc:
             best_acc  = v_acc
-            best_state = {k: v.clone() for k, v in model.state_dict().items()}
+            best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
 
         if ep % 20 == 0 or ep == 1:
-            print(f"Ep {ep:3d}/{EPOCHS}  train={t_ok/t_n:.1%}  val={v_acc:.1%}  best={best_acc:.1%}")
+            print(f"Ep {ep:3d}/{EPOCHS}  loss={t_loss/t_n:.4f}  "
+                  f"train={t_acc:.1%}  val={v_acc:.1%}  best={best_acc:.1%}")
 
     print(f"\nBest val accuracy: {best_acc:.1%}")
     model.load_state_dict(best_state)
-    model.eval()
+    model.eval().cpu()
+
+    save_plots(history)
 
     # ── Confusion matrix ──────────────────────────────────────────────────────
     conf = np.zeros((len(NOTES), len(NOTES)), dtype=int)
@@ -227,21 +319,20 @@ def main():
     for i, acc in enumerate(conf.diagonal() / conf.sum(axis=1)):
         print(f"  {LABELS[i]:4s}: {acc:.1%}")
 
-    # ── Export weights + feature params as JSON (consumed by JS worker) ───────
+    # ── Export ────────────────────────────────────────────────────────────────
     os.makedirs('public', exist_ok=True)
 
     def t2list(name): return model.state_dict()[name].numpy().tolist()
 
     out = {
-        'labels':      LABELS,
-        'sr':          SR,
-        'n_fft':       N_FFT,
-        'hop':         HOP,
-        'n_mels':      N_MELS,
-        'n_frames':    N_FRAMES,
+        'labels':       LABELS,
+        'sr':           SR,
+        'n_fft':        N_FFT,
+        'hop':          HOP,
+        'n_mels':       N_MELS,
+        'n_frames':     N_FRAMES,
         'onset_frames': 20,
-        'filterbank':  FILTERBANK.tolist(),
-        # MLP weights (3 linear layers + BN params)
+        'filterbank':   FILTERBANK.tolist(),
         'w0': t2list('net.0.weight'), 'b0': t2list('net.0.bias'),
         'bn0_w': t2list('net.1.weight'), 'bn0_b': t2list('net.1.bias'),
         'bn0_mean': t2list('net.1.running_mean'), 'bn0_var': t2list('net.1.running_var'),
@@ -250,10 +341,9 @@ def main():
         'bn1_mean': t2list('net.5.running_mean'), 'bn1_var': t2list('net.5.running_var'),
         'w2': t2list('net.8.weight'), 'b2': t2list('net.8.bias'),
     }
-    with open(OUT, 'w') as f:
+    with open(OUT_MODEL, 'w') as f:
         json.dump(out, f, separators=(',', ':'))
-    kb = os.path.getsize(OUT) / 1024
-    print(f"\nSaved → {OUT}  ({kb:.0f} KB)")
+    print(f"\nSaved → {OUT_MODEL}  ({os.path.getsize(OUT_MODEL)//1024} KB)")
 
 
 if __name__ == '__main__':

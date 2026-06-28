@@ -112,7 +112,7 @@
           </div>
         </template>
         <span v-else :class="['device-badge', deviceType]">
-          {{ deviceType === 'webgpu' ? '⚡ WebGPU' : '🖥 CPU' }}
+          {{ deviceType === 'kws' ? '⚡ KWS' : deviceType === 'webgpu' ? '⚡ WebGPU' : '🖥 CPU' }}
         </span>
       </div>
 
@@ -628,6 +628,7 @@ onBeforeUnmount(() => {
 }
 .device-badge.webgpu { color: var(--primary); border: 1px solid var(--primary); }
 .device-badge.wasm   { color: var(--text-muted); border: 1px solid var(--border); }
+.device-badge.kws    { color: #22c55e; border: 1px solid #22c55e; }
 
 .mic-meter-wrap {
   position: relative;

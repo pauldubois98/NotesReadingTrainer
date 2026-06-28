@@ -67,9 +67,32 @@ function melSpec(samples) {
   return S   // (n_mels × n_frames), row-major
 }
 
+function trimLeadingSilence(samples) {
+  // Find first frame where RMS exceeds 10 % of the peak RMS, then trim to there.
+  // This aligns the ring-buffer snapshot so the onset always starts near frame 0,
+  // matching the condition under which the onset feature was computed during training.
+  const frameLen = M.hop
+  let peakRms = 0
+  const nFrames = Math.floor(samples.length / frameLen)
+  const rms = new Float32Array(nFrames)
+  for (let t = 0; t < nFrames; t++) {
+    let s = 0
+    for (let i = 0; i < frameLen; i++) { const v = samples[t * frameLen + i]; s += v * v }
+    rms[t] = Math.sqrt(s / frameLen)
+    if (rms[t] > peakRms) peakRms = rms[t]
+  }
+  const threshold = peakRms * 0.10
+  let onset = 0
+  for (let t = 0; t < nFrames; t++) { if (rms[t] >= threshold) { onset = t; break } }
+  // Keep a small pre-roll (2 frames) so the leading consonant isn't clipped
+  const startSample = Math.max(0, (onset - 2) * frameLen)
+  return samples.subarray(startSample)
+}
+
 function extractFeatures(samples) {
   const { n_mels, n_frames, onset_frames } = M
-  const S = melSpec(samples)   // (n_mels × n_frames)
+  const aligned = trimLeadingSilence(samples)
+  const S = melSpec(aligned)   // (n_mels × n_frames)
 
   const gMean = new Float32Array(n_mels)
   const gStd  = new Float32Array(n_mels)

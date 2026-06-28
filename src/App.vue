@@ -103,9 +103,35 @@
         >{{ note }}</button>
       </div>
 
-      <!-- Voice heard indicator -->
-      <div class="voice-heard" :class="{ visible: isListening && lastHeard }">
-        {{ t.voiceHeard }}: <strong>{{ lastHeard }}</strong>
+      <!-- Model loading bar / device badge -->
+      <div v-if="voiceSupported" class="model-status">
+        <template v-if="modelProgress < 100">
+          <span class="model-loading-label">{{ t.modelLoading }} {{ modelProgress }}%</span>
+          <div class="model-bar-wrap">
+            <div class="model-bar" :style="{ width: modelProgress + '%' }" />
+          </div>
+        </template>
+        <span v-else :class="['device-badge', deviceType]">
+          {{ deviceType === 'webgpu' ? '⚡ WebGPU' : '🖥 CPU' }}
+        </span>
+      </div>
+
+      <!-- Voice status row -->
+      <div class="voice-status-row">
+        <!-- PTT hint / recording flash -->
+        <div v-if="isListening" class="ptt-hint" :class="{ recording: isRecordingPTT }">
+          {{ isRecordingPTT ? '⏺ ' + t.pttRecording : t.pttHint }}
+        </div>
+
+        <!-- Heard / raw transcript -->
+        <div class="voice-heard" :class="{ visible: lastHeard || rawTranscript }">
+          <template v-if="lastHeard">
+            {{ t.voiceHeard }}: <strong>{{ lastHeard }}</strong>
+          </template>
+          <template v-else-if="rawTranscript">
+            🔍 "<em>{{ rawTranscript }}</em>"
+          </template>
+        </div>
       </div>
 
       <!-- Controls -->
@@ -115,14 +141,24 @@
         </button>
         <button
           v-if="voiceSupported"
-          :class="['btn-mic', { active: isListening }]"
+          :class="['btn-mic', { active: isListening, recording: isRecordingPTT }]"
           :title="isListening ? t.voiceOff : t.voiceOn"
-          :disabled="paused"
+          :disabled="paused || modelProgress < 100"
           @click="toggleVoice"
         >🎤</button>
         <button class="btn-skip" :disabled="paused || !!feedback" @click="skipNote">{{ t.skip }}</button>
         <button class="btn-danger" @click="stopGame">{{ t.stop }}</button>
         <button class="btn-quit" @click="quitGame">{{ t.quit }}</button>
+      </div>
+
+      <!-- Mic level meter (visible while listening) -->
+      <div v-if="isListening" class="mic-meter-wrap">
+        <div
+          class="mic-meter-bar"
+          :class="{ speaking: micLevel > thresholdFraction }"
+          :style="{ width: (micLevel * 100).toFixed(1) + '%' }"
+        />
+        <div class="mic-meter-threshold" :style="{ left: (thresholdFraction * 100).toFixed(1) + '%' }" />
       </div>
 
       <!-- Mic threshold (shown only while voice is active) -->
@@ -368,8 +404,16 @@ function playAgain() {
   noteHistory.value = []
 }
 
+// Fraction of the meter bar where the current VAD threshold sits (for the marker line)
+// Mirrors: energyThreshold = 0.10 - sliderPct * 0.088, then ×4 to match the meter scaling
+const thresholdFraction = computed(() => {
+  const sliderPct = micThreshold.value / 100
+  const energy = 0.10 - sliderPct * 0.088
+  return Math.min(energy * 4, 1)
+})
+
 // --- Voice input ---
-const { isSupported: voiceSupported, isListening, lastHeard, toggle: toggleVoice } =
+const { isSupported: voiceSupported, isListening, isRecordingPTT, lastHeard, rawTranscript, modelProgress, deviceType, micLevel, toggle: toggleVoice } =
   useVoiceInput({ lang, onNote: answer, micThreshold })
 
 onBeforeUnmount(() => {
@@ -547,6 +591,7 @@ onBeforeUnmount(() => {
   flex: 0 0 auto;
 }
 .btn-mic.active { border-color: var(--primary); color: var(--primary); animation: pulse-mic 1.8s ease infinite; }
+.btn-mic.recording { border-color: var(--error); color: var(--error); animation: none; background: color-mix(in srgb, var(--error) 12%, var(--surface-2)); }
 .btn-mic:disabled { opacity: 0.4; cursor: not-allowed; }
 
 @keyframes pulse-mic {
@@ -554,11 +599,106 @@ onBeforeUnmount(() => {
   50%       { box-shadow: 0 0 0 6px color-mix(in srgb, var(--primary) 0%, transparent); }
 }
 
+.model-status {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.model-loading-label { color: var(--text-muted); }
+
+.model-bar-wrap {
+  height: 4px;
+  background: var(--surface-2);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.model-bar {
+  height: 100%;
+  background: var(--primary);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.device-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  width: fit-content;
+}
+.device-badge.webgpu { color: var(--primary); border: 1px solid var(--primary); }
+.device-badge.wasm   { color: var(--text-muted); border: 1px solid var(--border); }
+
+.mic-meter-wrap {
+  position: relative;
+  height: 8px;
+  background: var(--surface-2);
+  border-radius: 4px;
+  overflow: visible;
+}
+
+.mic-meter-bar {
+  height: 100%;
+  background: var(--success);
+  border-radius: 4px;
+  transition: width 0.05s linear, background 0.1s ease;
+  min-width: 0;
+}
+
+.mic-meter-bar.speaking {
+  background: var(--primary);
+}
+
+/* Threshold marker — vertical tick above the bar */
+.mic-meter-threshold {
+  position: absolute;
+  top: -4px;
+  width: 2px;
+  height: 16px;
+  background: var(--error);
+  border-radius: 1px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
 .mic-threshold-row {
   display: flex;
   flex-direction: column;
   gap: 6px;
   padding: 4px 2px 0;
+}
+
+.voice-status-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-height: 2.4em;
+}
+
+.ptt-hint {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  letter-spacing: 0.03em;
+}
+
+.ptt-hint.recording {
+  color: var(--error);
+  font-weight: 600;
+  animation: blink 0.7s step-start infinite;
+}
+
+@keyframes blink {
+  50% { opacity: 0.3; }
 }
 
 .voice-heard {

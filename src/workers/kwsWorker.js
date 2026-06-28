@@ -67,31 +67,37 @@ function melSpec(samples) {
   return S   // (n_mels × n_frames), row-major
 }
 
-function trimLeadingSilence(samples) {
-  // Find first frame where RMS exceeds 10 % of the peak RMS, then trim to there.
-  // This aligns the ring-buffer snapshot so the onset always starts near frame 0,
-  // matching the condition under which the onset feature was computed during training.
+function trimSilence(samples) {
+  // Trim leading AND trailing silence so that feature extraction operates only
+  // on the speech segment — matching how training clips were already segmented.
+  // Room noise (non-zero "silence") would otherwise shift g_mean and abs_delta
+  // away from the values the model learned during training.
   const frameLen = M.hop
-  let peakRms = 0
-  const nFrames = Math.floor(samples.length / frameLen)
-  const rms = new Float32Array(nFrames)
+  const nFrames  = Math.floor(samples.length / frameLen)
+  const rms      = new Float32Array(nFrames)
+  let peakRms    = 0
+
   for (let t = 0; t < nFrames; t++) {
     let s = 0
     for (let i = 0; i < frameLen; i++) { const v = samples[t * frameLen + i]; s += v * v }
     rms[t] = Math.sqrt(s / frameLen)
     if (rms[t] > peakRms) peakRms = rms[t]
   }
+
   const threshold = peakRms * 0.10
-  let onset = 0
-  for (let t = 0; t < nFrames; t++) { if (rms[t] >= threshold) { onset = t; break } }
-  // Keep a small pre-roll (2 frames) so the leading consonant isn't clipped
-  const startSample = Math.max(0, (onset - 2) * frameLen)
-  return samples.subarray(startSample)
+  let onset  = 0
+  let offset = nFrames - 1
+  for (let t = 0;           t < nFrames; t++)  { if (rms[t] >= threshold) { onset  = t; break } }
+  for (let t = nFrames - 1; t >= 0;      t--)  { if (rms[t] >= threshold) { offset = t; break } }
+
+  const start = Math.max(0,              (onset  - 2) * frameLen)
+  const end   = Math.min(samples.length, (offset + 3) * frameLen)
+  return samples.subarray(start, end)
 }
 
 function extractFeatures(samples) {
   const { n_mels, n_frames, onset_frames } = M
-  const aligned = trimLeadingSilence(samples)
+  const aligned = trimSilence(samples)
   const S = melSpec(aligned)   // (n_mels × n_frames)
 
   const gMean   = new Float32Array(n_mels)

@@ -37,7 +37,7 @@ HOP      = 160      # 10 ms
 N_MELS   = 64
 N_FRAMES = 100      # 1 second
 
-N_FEAT   = N_MELS * 3   # 192: global mean + global std + onset mean
+N_FEAT   = N_MELS * 4   # 256: global mean + global std + onset mean + abs delta
 
 SPLIT_DIR = 'training/split'
 OUT_MODEL = 'public/kws_model.json'
@@ -158,16 +158,21 @@ def mel_spec(samples):
 
 def extract_features(samples):
     """
-    192-D feature vector — same computation reproduced in the JS worker.
-      [0   : 64]  global mean  of log-mel over time
-      [64  : 128] global std   of log-mel over time
-      [128 : 192] onset  mean  (first 20 frames ≈ 200 ms)
+    256-D feature vector — same computation reproduced in the JS worker.
+      [0   : 64]  global mean     of log-mel over time
+      [64  : 128] global std      of log-mel over time
+      [128 : 192] onset mean      (first 20 frames ≈ 200 ms)
+      [192 : 256] mean abs delta  frame-to-frame change (spectral dynamics)
     """
-    S      = mel_spec(samples)
-    g_mean = S.mean(axis=1)
-    g_std  = S.std(axis=1)
-    o_mean = S[:, :20].mean(axis=1)
-    feat   = np.concatenate([g_mean, g_std, o_mean])
+    S       = mel_spec(samples)
+    g_mean  = S.mean(axis=1)
+    g_std   = S.std(axis=1)
+    o_mean  = S[:, :20].mean(axis=1)
+    # Mean absolute frame-to-frame difference per mel band.
+    # Distinguishes notes sharing the same vowel (do/sol, fa/la, mi/si):
+    # e.g. sol has a /l/ closure that raises dynamics in the upper half.
+    abs_delta = np.abs(np.diff(S, axis=1)).mean(axis=1)
+    feat    = np.concatenate([g_mean, g_std, o_mean, abs_delta])
     mu, sig = feat.mean(), feat.std() + 1e-6
     return (feat - mu) / sig
 

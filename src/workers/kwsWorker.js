@@ -94,23 +94,26 @@ function extractFeatures(samples) {
   const aligned = trimLeadingSilence(samples)
   const S = melSpec(aligned)   // (n_mels × n_frames)
 
-  const gMean = new Float32Array(n_mels)
-  const gStd  = new Float32Array(n_mels)
-  const oMean = new Float32Array(n_mels)
+  const gMean   = new Float32Array(n_mels)
+  const gStd    = new Float32Array(n_mels)
+  const oMean   = new Float32Array(n_mels)
+  const absDelta = new Float32Array(n_mels)
 
   for (let m = 0; m < n_mels; m++) {
-    let sum = 0, sum2 = 0, osum = 0
+    let sum = 0, sum2 = 0, osum = 0, dsum = 0
     for (let t = 0; t < n_frames; t++) { const v = S[m * n_frames + t]; sum += v; sum2 += v*v }
     for (let t = 0; t < onset_frames; t++) osum += S[m * n_frames + t]
+    for (let t = 0; t < n_frames - 1; t++) dsum += Math.abs(S[m * n_frames + t + 1] - S[m * n_frames + t])
     const mean = sum / n_frames
-    gMean[m] = mean
-    gStd[m]  = Math.sqrt(sum2/n_frames - mean*mean)
-    oMean[m] = osum / onset_frames
+    gMean[m]    = mean
+    gStd[m]     = Math.sqrt(sum2/n_frames - mean*mean)
+    oMean[m]    = osum / onset_frames
+    absDelta[m] = dsum / (n_frames - 1)
   }
 
-  // Concatenate and normalise
-  const feat = new Float32Array(n_mels * 3)
-  feat.set(gMean, 0); feat.set(gStd, n_mels); feat.set(oMean, n_mels * 2)
+  // Concatenate [mean | std | onset | absDelta] and normalise
+  const feat = new Float32Array(n_mels * 4)
+  feat.set(gMean, 0); feat.set(gStd, n_mels); feat.set(oMean, n_mels * 2); feat.set(absDelta, n_mels * 3)
   let fSum = 0, fSum2 = 0
   for (let i = 0; i < feat.length; i++) { fSum += feat[i]; fSum2 += feat[i]*feat[i] }
   const fMu  = fSum / feat.length

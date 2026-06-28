@@ -29,16 +29,34 @@ export function useVoiceInput({ lang, onNote, micThreshold }) {
   // ── Result handling ──────────────────────────────────────────────
   let heardTimer       = null
   let processingLocked = false
-  let lastNoteAt       = 0          // debounce: ms timestamp of last accepted note
-  const DEBOUNCE_MS    = 700        // ignore new detections for this long after a hit
+  let lastNoteAt       = 0     // debounce: ms timestamp of last accepted note
+  const DEBOUNCE_MS    = 700
+
+  // Temporal smoothing: require SMOOTH_N consecutive windows to agree before firing.
+  // Kills one-off wrong detections from ambiguous window positions.
+  const SMOOTH_N   = 2
+  let predHistory  = []   // recent [noteIdx, ...] (reset on null or mismatch)
 
   function handleResult({ note, label, conf }) {
     processingLocked = false
-    if (note === null || note === undefined) return
+
+    if (note === null || note === undefined) {
+      predHistory = []   // ambiguous window — reset streak
+      return
+    }
+
+    // Maintain a streak of identical predictions
+    if (predHistory.length > 0 && predHistory[predHistory.length - 1] !== note) {
+      predHistory = []   // different note — start fresh
+    }
+    predHistory.push(note)
+
+    if (predHistory.length < SMOOTH_N) return   // not enough agreement yet
 
     const now = performance.now()
-    if (now - lastNoteAt < DEBOUNCE_MS) return   // too soon after last accepted note
-    lastNoteAt = now
+    if (now - lastNoteAt < DEBOUNCE_MS) return
+    lastNoteAt  = now
+    predHistory = []
 
     rawTranscript.value = label
     lastHeard.value     = label

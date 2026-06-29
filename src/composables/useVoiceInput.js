@@ -4,13 +4,16 @@ import KwsWorker from '../workers/kwsWorker.js?worker'
 const WHISPER_SR = 16000
 
 export function useVoiceInput({ lang, onNote, micThreshold }) {
-  const isSupported   = ref(true)
-  const isListening   = ref(false)
-  const lastHeard     = ref('')
-  const rawTranscript = ref('')
-  const modelProgress = ref(0)
-  const micLevel      = ref(0)
-  const deviceType    = ref('loading')
+  const isSupported    = ref(true)
+  const isListening    = ref(false)
+  const lastHeard      = ref('')
+  const rawTranscript  = ref('')
+  const modelProgress  = ref(0)
+  const micLevel       = ref(0)
+  const deviceType     = ref('loading')
+  const collectCounts  = ref([0, 0, 0, 0, 0, 0, 0])
+  const personalReady  = ref(false)
+  const trainAccuracy  = ref(0)
 
   // ── Worker ───────────────────────────────────────────────────────
   let worker = new KwsWorker()
@@ -21,8 +24,28 @@ export function useVoiceInput({ lang, onNote, micThreshold }) {
       modelProgress.value = 100
       deviceType.value    = 'kws'
       workerReady         = true
+      // Restore saved personal model if any
+      const saved = localStorage.getItem('kws_personal')
+      if (saved) {
+        try {
+          const { W, b } = JSON.parse(saved)
+          worker.postMessage({ type: 'load_personal', W, b })
+          personalReady.value = true
+        } catch {}
+      }
     }
-    if (e.data.type === 'result') handleResult(e.data)
+    if (e.data.type === 'result')       handleResult(e.data)
+    if (e.data.type === 'collected')    collectCounts.value = [...e.data.counts]
+    if (e.data.type === 'trained') {
+      trainAccuracy.value = e.data.accuracy
+      personalReady.value = true
+      localStorage.setItem('kws_personal', JSON.stringify({ W: e.data.W, b: e.data.b }))
+    }
+    if (e.data.type === 'personal_reset') {
+      collectCounts.value = [0, 0, 0, 0, 0, 0, 0]
+      personalReady.value = false
+      localStorage.removeItem('kws_personal')
+    }
   }
   worker.postMessage({ type: 'init' })
 
@@ -181,11 +204,27 @@ export function useVoiceInput({ lang, onNote, micThreshold }) {
     }
   }
 
+  function collectSample(audio, label) {
+    worker.postMessage({ type: 'collect', audio, label }, [audio.buffer])
+  }
+
+  function trainPersonal() {
+    worker.postMessage({ type: 'train' })
+  }
+
+  function resetPersonal() {
+    worker.postMessage({ type: 'reset_personal' })
+  }
+
   onUnmounted(() => {
     stopCapture()
     worker?.terminate()
     clearTimeout(heardTimer)
   })
 
-  return { isSupported, isListening, lastHeard, rawTranscript, modelProgress, deviceType, micLevel, toggle }
+  return {
+    isSupported, isListening, lastHeard, rawTranscript, modelProgress,
+    deviceType, micLevel, toggle,
+    collectCounts, personalReady, trainAccuracy, collectSample, trainPersonal, resetPersonal,
+  }
 }

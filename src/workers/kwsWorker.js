@@ -180,6 +180,76 @@ async function init() {
   self.postMessage({ type: 'ready' })
 }
 
+// ── Personal model (user-recorded softmax classifier) ─────────────────────────
+
+let personalData  = []   // [{feat: Float32Array, label: number}]
+let personalModel = null // {W: Float32Array(7×256), b: Float32Array(7)} or null
+let collectCounts = [0, 0, 0, 0, 0, 0, 0]
+
+function softmax(logits) {
+  let maxL = logits[0]
+  for (let i = 1; i < logits.length; i++) if (logits[i] > maxL) maxL = logits[i]
+  let sumE = 0
+  const exps = new Float32Array(logits.length)
+  for (let i = 0; i < logits.length; i++) { exps[i] = Math.exp(logits[i] - maxL); sumE += exps[i] }
+  for (let i = 0; i < logits.length; i++) exps[i] /= sumE
+  return exps
+}
+
+function personalForward(feat, W, b) {
+  const nClass = 7, nFeat = feat.length
+  const logits = new Float32Array(nClass)
+  for (let c = 0; c < nClass; c++) {
+    let s = b[c]
+    for (let j = 0; j < nFeat; j++) s += W[c * nFeat + j] * feat[j]
+    logits[c] = s
+  }
+  return logits
+}
+
+function trainPersonal() {
+  const features = personalData.map(d => d.feat)
+  const labels   = personalData.map(d => d.label)
+  const nFeat    = features[0].length  // 256
+  const nClass   = 7
+  const nSamples = features.length
+  const epochs   = 500
+  const lr       = 0.05
+  const l2       = 0.001  // regularisation
+
+  const W = new Float32Array(nClass * nFeat)
+  const b = new Float32Array(nClass)
+  for (let i = 0; i < W.length; i++) W[i] = (Math.random() - 0.5) * 0.01
+
+  const idx = Array.from({ length: nSamples }, (_, i) => i)
+  for (let ep = 0; ep < epochs; ep++) {
+    for (let i = nSamples - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [idx[i], idx[j]] = [idx[j], idx[i]]
+    }
+    for (const i of idx) {
+      const x = features[i], y = labels[i]
+      const probs = softmax(personalForward(x, W, b))
+      for (let c = 0; c < nClass; c++) {
+        const dc = probs[c] - (c === y ? 1 : 0)
+        b[c] -= lr * dc
+        for (let j = 0; j < nFeat; j++) W[c * nFeat + j] -= lr * (dc * x[j] + l2 * W[c * nFeat + j])
+      }
+    }
+  }
+
+  let correct = 0
+  for (let i = 0; i < nSamples; i++) {
+    const logits = personalForward(features[i], W, b)
+    let maxL = logits[0], pred = 0
+    for (let c = 1; c < nClass; c++) if (logits[c] > maxL) { maxL = logits[c]; pred = c }
+    if (pred === labels[i]) correct++
+  }
+
+  personalModel = { W, b }
+  return { W: Array.from(W), b: Array.from(b), accuracy: correct / nSamples }
+}
+
 // ── Inference ─────────────────────────────────────────────────────────────────
 
 const CONFIDENCE_THRESHOLD = 0.75
@@ -187,27 +257,57 @@ const CONFIDENCE_THRESHOLD = 0.75
 function transcribe(audio) {
   const t0     = performance.now()
   const feat   = extractFeatures(audio)
-  const logits = mlpForward(feat)
+  const logits = personalModel
+    ? personalForward(feat, personalModel.W, personalModel.b)
+    : mlpForward(feat)
 
-  const maxL = Math.max(...logits)
-  const exps = logits.map(v => Math.exp(v - maxL))
-  const sumE = exps.reduce((a, b) => a + b, 0)
-  const probs = exps.map(v => v / sumE)
+  const probs   = softmax(logits)
+  let maxConf = probs[0], noteIdx = 0
+  for (let i = 1; i < probs.length; i++) if (probs[i] > maxConf) { maxConf = probs[i]; noteIdx = i }
+  const ms = (performance.now() - t0).toFixed(1)
 
-  const noteIdx = probs.indexOf(Math.max(...probs))
-  const conf    = probs[noteIdx]
-  const ms      = (performance.now() - t0).toFixed(1)
-
-  if (conf < CONFIDENCE_THRESHOLD) {
-    self.postMessage({ type: 'result', note: null, conf })
+  if (maxConf < CONFIDENCE_THRESHOLD) {
+    self.postMessage({ type: 'result', note: null, conf: maxConf })
     return
   }
-  self.postMessage({ type: 'result', note: noteIdx, label: M.labels[noteIdx], conf, ms })
+  self.postMessage({ type: 'result', note: noteIdx, label: M.labels[noteIdx], conf: maxConf, ms })
 }
 
 // ── Message handler ───────────────────────────────────────────────────────────
 
 self.addEventListener('message', (e) => {
-  if (e.data.type === 'init')       init().catch(err => self.postMessage({ type: 'error', message: err.message }))
-  if (e.data.type === 'transcribe') transcribe(e.data.audio)
+  const { type } = e.data
+
+  if (type === 'init') {
+    init().catch(err => self.postMessage({ type: 'error', message: err.message }))
+  }
+
+  if (type === 'transcribe') {
+    transcribe(e.data.audio)
+  }
+
+  if (type === 'collect') {
+    if (!M) return
+    const feat = extractFeatures(e.data.audio)
+    personalData.push({ feat, label: e.data.label })
+    collectCounts[e.data.label]++
+    self.postMessage({ type: 'collected', label: e.data.label, count: collectCounts[e.data.label], counts: [...collectCounts] })
+  }
+
+  if (type === 'train') {
+    if (personalData.length < 7) return
+    const result = trainPersonal()
+    self.postMessage({ type: 'trained', ...result })
+  }
+
+  if (type === 'reset_personal') {
+    personalData  = []
+    personalModel = null
+    collectCounts = [0, 0, 0, 0, 0, 0, 0]
+    self.postMessage({ type: 'personal_reset' })
+  }
+
+  if (type === 'load_personal') {
+    personalModel = { W: new Float32Array(e.data.W), b: new Float32Array(e.data.b) }
+  }
 })

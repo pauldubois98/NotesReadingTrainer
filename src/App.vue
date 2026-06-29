@@ -58,8 +58,29 @@
       <!-- Staff preview -->
       <MusicStaff :note-history="previewHistory" :clef="clef" :max-history="maxHistory" />
 
+      <!-- Voice training -->
+      <div v-if="voiceSupported" class="voice-train-row">
+        <button class="btn-train-voice" @click="showTrainer = true">
+          🎤 {{ t.trainVoice }}
+        </button>
+        <span v-if="personalReady" class="personal-badge">✓ {{ t.personalModel }}</span>
+      </div>
+
       <button class="btn-primary btn-large" @click="startGame">{{ t.start }}</button>
     </div>
+
+    <!-- Voice trainer modal -->
+    <VoiceTrainer
+      v-if="showTrainer"
+      :lang="lang"
+      :counts="collectCounts"
+      :personal-ready="personalReady"
+      :train-accuracy="trainAccuracy"
+      :collect-sample="collectSample"
+      :train-personal="trainPersonal"
+      :reset-personal="resetPersonal"
+      @close="showTrainer = false"
+    />
 
     <!-- ── Game screen ─────────────────────────────────────────── -->
     <div v-else-if="screen === 'game'" class="card game-card">
@@ -213,6 +234,7 @@
 <script setup>
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import MusicStaff from './components/MusicStaff.vue'
+import VoiceTrainer from './components/VoiceTrainer.vue'
 import { useI18n, INSTRUMENTS_BY_CLEF } from './i18n.js'
 import { useVoiceInput } from './composables/useVoiceInput.js'
 
@@ -404,9 +426,14 @@ const thresholdFraction = computed(() => {
   return Math.min(energy * 4, 1)
 })
 
-// --- Voice input ---
-const { isSupported: voiceSupported, isListening, lastHeard, rawTranscript, modelProgress, deviceType, micLevel, toggle: toggleVoice } =
-  useVoiceInput({ lang, onNote: answer, micThreshold })
+// --- Voice input + personal model ---
+const {
+  isSupported: voiceSupported, isListening, lastHeard, rawTranscript,
+  modelProgress, deviceType, micLevel, toggle: toggleVoice,
+  collectCounts, personalReady, trainAccuracy, collectSample, trainPersonal, resetPersonal,
+} = useVoiceInput({ lang, onNote: answer, micThreshold })
+
+const showTrainer = ref(false)
 
 onBeforeUnmount(() => {
   stopTimer()
@@ -870,6 +897,37 @@ onBeforeUnmount(() => {
   font-size: 0.8rem;
   color: var(--text-muted);
   text-align: right;
+}
+
+/* Voice train row */
+.voice-train-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.btn-train-voice {
+  padding: 9px 18px;
+  border-radius: 10px;
+  border: 1.5px solid var(--primary);
+  background: transparent;
+  color: var(--primary);
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.btn-train-voice:hover { background: var(--primary); color: white; }
+
+.personal-badge {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #22c55e;
+  border: 1px solid #22c55e;
+  border-radius: 8px;
+  padding: 4px 10px;
 }
 
 /* Mobile */

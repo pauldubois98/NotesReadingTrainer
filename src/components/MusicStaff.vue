@@ -14,9 +14,9 @@
         stroke-width="1.5"
       />
 
-      <!-- ── Treble clef (Sol) ──────────────────────────────────── -->
+      <!-- ── Treble clef (Sol, always line 2) ──────────────────── -->
       <text
-        v-if="clef === 'sol'"
+        v-if="clefBase === 'sol'"
         :x="36"
         :y="positionToY(2) + 8"
         class="clef-symbol clef-sol"
@@ -24,20 +24,20 @@
         dominant-baseline="alphabetic"
       >𝄞</text>
 
-      <!-- ── Bass clef (Fa) ──────────────────────────────────── -->
-      <g v-else-if="clef === 'fa'">
-        <circle :cx="13" :cy="positionToY(6)" r="5.5" class="clef-shape" />
+      <!-- ── Fa clef (line 3 or 4) ──────────────────────────────── -->
+      <g v-else-if="clefBase === 'fa'">
+        <circle :cx="13" :cy="positionToY(clefPos)" r="5.5" class="clef-shape" />
         <path :d="bassClefPath" fill="none" class="clef-shape" stroke-width="3.5" stroke-linecap="round" />
-        <circle :cx="44" :cy="positionToY(7)" r="3" class="clef-shape" />
-        <circle :cx="44" :cy="positionToY(5)" r="3" class="clef-shape" />
+        <circle :cx="44" :cy="positionToY(clefPos + 1)" r="3" class="clef-shape" />
+        <circle :cx="44" :cy="positionToY(clefPos - 1)" r="3" class="clef-shape" />
       </g>
 
-      <!-- ── Alto C clef (Do) ─────────────────────────────────── -->
+      <!-- ── Do C clef (line 1–4) ─────────────────────────────── -->
       <g v-else>
         <rect :x="4" :y="positionToY(8) - 2" width="7" :height="positionToY(0) - positionToY(8) + 4" rx="2" class="clef-shape" />
-        <line :x1="11" :y1="positionToY(8)" :x2="37" :y2="positionToY(4)" class="clef-shape" stroke-width="4.5" stroke-linecap="round" />
-        <line :x1="11" :y1="positionToY(0)" :x2="37" :y2="positionToY(4)" class="clef-shape" stroke-width="4.5" stroke-linecap="round" />
-        <rect :x="35" :y="positionToY(6)" width="5" :height="positionToY(2) - positionToY(6)" rx="2" class="clef-shape" />
+        <line :x1="11" :y1="positionToY(8)" :x2="37" :y2="positionToY(clefPos)" class="clef-shape" stroke-width="4.5" stroke-linecap="round" />
+        <line :x1="11" :y1="positionToY(0)" :x2="37" :y2="positionToY(clefPos)" class="clef-shape" stroke-width="4.5" stroke-linecap="round" />
+        <rect :x="35" :y="positionToY(clefPos + 2)" width="5" :height="positionToY(clefPos - 2) - positionToY(clefPos + 2)" rx="2" class="clef-shape" />
       </g>
 
       <!-- ── Note history (up to 3 notes, newest on the right) ─── -->
@@ -187,10 +187,21 @@ function ledgerBelow(pos) {
   return r
 }
 
-// Bass clef hook path (anchored at F line, pos 6)
+// Parse clef key (e.g. 'do3', 'fa4', 'sol2') into base type and staff position
+const clefBase = computed(() => {
+  const c = props.clef
+  if (c.startsWith('sol')) return 'sol'
+  if (c.startsWith('do'))  return 'do'
+  return 'fa'
+})
+const clefLine = computed(() => parseInt(props.clef.slice(-1)) || 2)
+// Staff position of the reference line: line n → pos (n-1)*2
+const clefPos  = computed(() => (clefLine.value - 1) * 2)
+
+// Fa clef hook path anchored at the F reference line (clefPos)
 const bassClefPath = computed(() => {
-  const fy  = positionToY(6)
-  const top = positionToY(7) - 2
+  const fy  = positionToY(clefPos.value)
+  const top = positionToY(clefPos.value + 1) - 2
   return `M 13,${fy} C 13,${top - 4} 26,${top - 8} 32,${top} C 38,${top + 8} 36,${fy + 6} 26,${fy + 8}`
 })
 </script>

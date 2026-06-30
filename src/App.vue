@@ -22,13 +22,38 @@
         <!-- Clef -->
         <div class="setting-group">
           <label class="setting-label">{{ t.clef }}</label>
-          <div class="toggle-group">
-            <button
-              v-for="c in ['sol', 'do', 'fa']"
-              :key="c"
-              :class="['toggle-btn', { active: clef === c }]"
-              @click="selectClef(c)"
-            >{{ t[`clef${c.charAt(0).toUpperCase() + c.slice(1)}`] }}</button>
+          <div class="clef-picker">
+            <!-- Sol -->
+            <div class="clef-row">
+              <span class="clef-type-label">{{ t.clefGroupSol }}</span>
+              <div class="toggle-group">
+                <button :class="['toggle-btn', { active: clef === 'sol2' }]" @click="selectClef('sol2')">
+                  {{ t.clefLine }}2
+                </button>
+              </div>
+            </div>
+            <!-- Do -->
+            <div class="clef-row">
+              <span class="clef-type-label">{{ t.clefGroupDo }}</span>
+              <div class="toggle-group">
+                <button v-for="l in [1,2,3,4]" :key="l"
+                  :class="['toggle-btn', { active: clef === 'do'+l }]"
+                  @click="selectClef('do'+l)">
+                  {{ t.clefLine }}{{ l }}
+                </button>
+              </div>
+            </div>
+            <!-- Fa -->
+            <div class="clef-row">
+              <span class="clef-type-label">{{ t.clefGroupFa }}</span>
+              <div class="toggle-group">
+                <button v-for="l in [3,4]" :key="l"
+                  :class="['toggle-btn', { active: clef === 'fa'+l }]"
+                  @click="selectClef('fa'+l)">
+                  {{ t.clefLine }}{{ l }}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -102,7 +127,7 @@
 
       <!-- Context badge -->
       <div class="context-badge">
-        <span>{{ t[`clef${clef.charAt(0).toUpperCase() + clef.slice(1)}`] }}</span>
+        <span>{{ t.clefs[clef] }}</span>
         <span class="context-sep">·</span>
         <span>{{ t.instruments[instrument] }}</span>
       </div>
@@ -250,7 +275,7 @@ const lang = ref('fr')
 const t = computed(() => useI18n(lang.value))
 
 // --- Settings ---
-const clef = ref('sol')
+const clef = ref('sol2')
 const instrument = ref('piano')
 const maxHistory = ref(3)
 const micThreshold = ref(0)  // 0–90, used as confidence threshold / 100
@@ -263,13 +288,11 @@ function selectClef(c) {
   instrument.value = INSTRUMENTS_BY_CLEF[c][0]
 }
 
-// Note names index (0=Do, 1=Re, 2=Mi, 3=Fa, 4=Sol, 5=La, 6=Si)
-// Offset = note index of the bottom line (pos 0) for each clef
-function clefOffset(clefType) {
-  if (clefType === 'sol') return 2  // Mi on bottom line
-  if (clefType === 'do')  return 3  // Fa on bottom line (alto C clef)
-  return 4                          // Sol on bottom line (bass clef)
-}
+// Note names index (0=Do, 1=Ré, 2=Mi, 3=Fa, 4=Sol, 5=La, 6=Si)
+// Offset = note name index at staff position 0 (bottom line) for each clef.
+// Derived from: which note sits on the clef's reference line, then count down.
+const CLEF_OFFSETS = { sol2: 2, do1: 0, do2: 5, do3: 3, do4: 1, fa3: 6, fa4: 4 }
+function clefOffset(clefType) { return CLEF_OFFSETS[clefType] ?? 2 }
 
 const MIN_POS = -4
 const MAX_POS = 12
@@ -897,6 +920,25 @@ onBeforeUnmount(() => {
   font-size: 0.8rem;
   color: var(--text-muted);
   text-align: right;
+}
+
+/* Clef grouped picker */
+.clef-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.clef-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.clef-type-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  width: 26px;
+  flex-shrink: 0;
 }
 
 /* Voice train row */

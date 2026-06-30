@@ -3,9 +3,19 @@ export const translations = {
     title: 'Entraîneur de Lecture de Notes',
     subtitle: 'Identifiez la note affichée sur la portée',
     clef: 'Clef',
-    clefSol: 'Clef de Sol',
-    clefDo: 'Clef de Do',
-    clefFa: 'Clef de Fa',
+    clefs: {
+      sol2: 'Sol (Violon)',
+      do1:  'Do Soprano',
+      do2:  'Do Mezzo',
+      do3:  'Do Alto',
+      do4:  'Do Ténor',
+      fa3:  'Fa Baryton',
+      fa4:  'Fa Basse',
+    },
+    clefGroupSol: 'Sol',
+    clefGroupDo:  'Do',
+    clefGroupFa:  'Fa',
+    clefLine: 'L',
     instrument: 'Instrument',
     language: 'Langue',
     start: 'Commencer',
@@ -55,9 +65,19 @@ export const translations = {
     title: 'Music Notes Trainer',
     subtitle: 'Identify the note shown on the staff',
     clef: 'Clef',
-    clefSol: 'Treble Clef',
-    clefDo: 'Alto Clef',
-    clefFa: 'Bass Clef',
+    clefs: {
+      sol2: 'Treble',
+      do1:  'Soprano C',
+      do2:  'Mezzo C',
+      do3:  'Alto C',
+      do4:  'Tenor C',
+      fa3:  'Baritone F',
+      fa4:  'Bass F',
+    },
+    clefGroupSol: 'Sol',
+    clefGroupDo:  'Do',
+    clefGroupFa:  'Fa',
+    clefLine: 'L',
     instrument: 'Instrument',
     language: 'Language',
     start: 'Start',
@@ -109,9 +129,13 @@ export function useI18n(lang) {
   return translations[lang] || translations.en
 }
 
-// Instruments available per clef (piano appears in sol and do as requested)
+// Instruments available per clef
 export const INSTRUMENTS_BY_CLEF = {
-  sol: ['piano', 'violon', 'flute', 'hautbois', 'clarinette', 'trompette', 'guitare'],
-  do:  ['piano', 'alto'],
-  fa:  ['piano', 'violoncelle', 'contrebasse', 'basson', 'trombone', 'cor'],
+  sol2: ['piano', 'violon', 'flute', 'hautbois', 'clarinette', 'trompette', 'guitare'],
+  do1:  ['piano'],
+  do2:  ['piano'],
+  do3:  ['piano', 'alto'],
+  do4:  ['piano', 'violoncelle', 'basson', 'trombone'],
+  fa3:  ['piano', 'trombone', 'cor'],
+  fa4:  ['piano', 'violoncelle', 'contrebasse', 'basson', 'trombone', 'cor'],
 }

@@ -196,12 +196,17 @@ const clefPos  = computed(() => (clefLine.value - 1) * 2)
 // s = 4 * LINE_SPACING / 85 ≈ 0.753
 const CLEF_SCALE = 4 * LINE_SPACING / (105.115576 - 20.115576)  // ≈ 0.753
 
-// Sol clef: G reference line (line 2) ≈ y=82.5 in SVG (top + 3 spaces × 20.83 units/space)
+// Sol clef: G reference = centre of the G-loop sub-paths.
+//   Sub-path 1 top ≈ y=67.6, sub-path 2 lowest ≈ y=86.2 → centre ≈ 76.9
+// Treble clefs span ~7–8 staff spaces, so use a dedicated larger scale.
+// Scale chosen so the clef extends ~1.5 spaces above line 5 and ~1.5 below line 1.
+//   path y-span ≈ 22–108 (86 units) ≈ 5.4 spaces at CLEF_SCALE, so boost to 1.2×.
+const SOL_SCALE = 1.2
 const solClefTransform = computed(() => {
-  const s    = CLEF_SCALE
-  const yRef = 20.115576 + 3 * (85 / 4)   // line 2 = top + 3 spaces down
+  const s    = SOL_SCALE
+  const yRef = (67.636287 + 86.2) / 2     // ≈ 76.9 — centre of the G loop
   const ty   = positionToY(2) - yRef * s
-  const tx   = 4 - 36 * s                  // left edge of path (x≈36) → staff x=4
+  const tx   = 4 - 34 * s                  // leftmost path x ≈ 34 → staff x=4
   return `translate(${tx},${ty}) scale(${s})`
 })
 

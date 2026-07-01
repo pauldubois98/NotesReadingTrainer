@@ -80,7 +80,10 @@
       </div>
 
       <!-- Staff preview -->
-      <MusicStaff :note-history="previewHistory" :clef="clef" :max-history="maxHistory" />
+      <div class="preview-section">
+        <span class="setting-label">{{ t.preview }}</span>
+        <MusicStaff :note-history="previewHistory" :clef="clef" :max-history="maxHistory" />
+      </div>
 
       <!-- Voice training -->
       <div v-if="voiceSupported" class="voice-train-row">
@@ -108,31 +111,31 @@
 
     <!-- ── Game screen ─────────────────────────────────────────── -->
     <div v-else-if="screen === 'game'" class="card game-card">
-      <!-- Header -->
+      <!-- Header stats -->
       <div class="game-header">
-        <div class="stat">
+        <div class="stat-pill error-pill">
           <span class="stat-label">{{ t.errors }}</span>
-          <span class="stat-value error-val">{{ errors }}</span>
+          <span class="stat-value">{{ errors }}</span>
         </div>
-        <div class="stat">
-          <span class="stat-label">{{ t.score }}</span>
-          <span class="stat-value">{{ correct }}</span>
-        </div>
-        <div class="stat">
+        <div class="stat-pill">
           <span class="stat-label">{{ t.time }}</span>
           <span class="stat-value">{{ formattedTime }}</span>
+        </div>
+        <div class="stat-pill success-pill">
+          <span class="stat-label">{{ t.score }}</span>
+          <span class="stat-value">{{ correct }}</span>
         </div>
       </div>
 
       <!-- Context badge -->
       <div class="context-badge">
-        <span>{{ t.clefs[clef] }}</span>
+        <span class="clef-tag">{{ t.clefs[clef] }}</span>
       </div>
 
       <!-- Staff -->
       <div class="staff-area">
         <MusicStaff :note-history="noteHistory" :clef="clef" :feedback="feedback" :max-history="maxHistory" />
-        <div v-if="paused" class="pause-overlay">{{ t.paused }}</div>
+        <div v-if="paused" class="pause-overlay">⏸ {{ t.paused }}</div>
       </div>
 
       <!-- Note buttons -->
@@ -146,79 +149,91 @@
         >{{ note }}</button>
       </div>
 
-      <!-- Model loading bar / device badge -->
-      <div v-if="voiceSupported" class="model-status">
-        <template v-if="modelProgress < 100">
-          <span class="model-loading-label">{{ t.modelLoading }} {{ modelProgress }}%</span>
-          <div class="model-bar-wrap">
-            <div class="model-bar" :style="{ width: modelProgress + '%' }" />
-          </div>
-        </template>
-        <span v-else :class="['device-badge', deviceType]">
-          {{ deviceType === 'kws' ? '⚡ KWS' : deviceType === 'webgpu' ? '⚡ WebGPU' : '🖥 CPU' }}
-        </span>
-      </div>
-
-      <!-- Voice heard / piano detected / raw transcript -->
-      <div class="voice-heard" :class="{ visible: lastHeard || lastHeardHz || rawTranscript }">
-        <template v-if="lastHeard">
-          {{ t.voiceHeard }}: <strong>{{ lastHeard }}</strong>
-        </template>
-        <template v-else-if="lastHeardHz">
-          🎹 <strong>{{ lastHeardHz.toFixed(0) }} Hz</strong>
-        </template>
-        <template v-else-if="rawTranscript">
-          🔍 "<em>{{ rawTranscript }}</em>"
-        </template>
-      </div>
-
-      <!-- Controls -->
+      <!-- Game controls -->
       <div class="controls">
         <button class="btn-secondary" @click="togglePause">
           {{ paused ? t.resume : t.pause }}
         </button>
-        <button
-          v-if="voiceSupported"
-          :class="['btn-mic', { active: isListening }]"
-          :title="isListening ? t.voiceOff : t.voiceOn"
-          :disabled="paused || modelProgress < 100"
-          @click="toggleVoice"
-        >🎤</button>
-        <button
-          v-if="pianoSupported"
-          :class="['btn-mic', { active: pianoListening }]"
-          :title="pianoListening ? t.pianoOff : t.pianoOn"
-          :disabled="paused"
-          @click="togglePiano"
-        >🎹</button>
         <button class="btn-skip" :disabled="paused || !!feedback" @click="skipNote">{{ t.skip }}</button>
         <button class="btn-danger" @click="stopGame">{{ t.stop }}</button>
         <button class="btn-quit" @click="quitGame">{{ t.quit }}</button>
       </div>
 
-      <!-- Mic level meter (visible while listening) -->
-      <div v-if="isListening" class="mic-meter-wrap">
-        <div
-          class="mic-meter-bar"
-          :class="{ speaking: micLevel > thresholdFraction }"
-          :style="{ width: (micLevel * 100).toFixed(1) + '%' }"
-        />
-        <div class="mic-meter-threshold" :style="{ left: (thresholdFraction * 100).toFixed(1) + '%' }" />
-      </div>
+      <!-- Audio input section -->
+      <div v-if="voiceSupported || pianoSupported" class="audio-section">
+        <div class="audio-row">
+          <!-- Input toggles -->
+          <div class="audio-btns">
+            <button
+              v-if="voiceSupported"
+              :class="['btn-mic', { active: isListening }]"
+              :title="isListening ? t.voiceOff : t.voiceOn"
+              :disabled="paused || modelProgress < 100"
+              @click="toggleVoice"
+            >🎤</button>
+            <button
+              v-if="pianoSupported"
+              :class="['btn-mic', { active: pianoListening }]"
+              :title="pianoListening ? t.pianoOff : t.pianoOn"
+              :disabled="paused"
+              @click="togglePiano"
+            >🎹</button>
+          </div>
 
-      <!-- Mic threshold (shown only while voice is active) -->
-      <div v-if="voiceSupported && isListening" class="mic-threshold-row">
-        <label class="setting-label">
-          🎤 {{ t.micThreshold }} —
-          <span class="slider-value">{{ micThreshold === 0 ? t.micOff : micThreshold + '%' }}</span>
-        </label>
-        <input type="range" min="0" max="90" step="5" v-model.number="micThreshold" class="slider" />
+          <!-- Feedback / status -->
+          <div class="audio-feedback">
+            <template v-if="modelProgress < 100 && voiceSupported">
+              <span class="model-loading-label">{{ modelProgress }}%</span>
+              <div class="model-bar-wrap">
+                <div class="model-bar" :style="{ width: modelProgress + '%' }" />
+              </div>
+            </template>
+            <template v-else-if="lastHeard">
+              <span class="heard-chip">🎤 {{ lastHeard }}</span>
+            </template>
+            <template v-else-if="lastHeardHz">
+              <span class="heard-chip">🎹 {{ lastHeardHz.toFixed(0) }} Hz</span>
+            </template>
+            <template v-else-if="rawTranscript">
+              <span class="heard-chip muted">🔍 {{ rawTranscript }}</span>
+            </template>
+            <span v-else-if="modelProgress >= 100" :class="['device-badge', deviceType]">
+              {{ deviceType === 'kws' ? '⚡ KWS' : deviceType === 'webgpu' ? '⚡ GPU' : '🖥 CPU' }}
+            </span>
+          </div>
+        </div>
+
+        <!-- Mic level meter (voice only) -->
+        <div v-if="isListening" class="mic-meter-wrap">
+          <div
+            class="mic-meter-bar"
+            :class="{ speaking: micLevel > thresholdFraction }"
+            :style="{ width: (micLevel * 100).toFixed(1) + '%' }"
+          />
+          <div class="mic-meter-threshold" :style="{ left: (thresholdFraction * 100).toFixed(1) + '%' }" />
+        </div>
+
+        <!-- Mic threshold slider -->
+        <div v-if="isListening" class="mic-threshold-row">
+          <label class="setting-label">
+            {{ t.micThreshold }} — <span class="slider-value">{{ micThreshold === 0 ? t.micOff : micThreshold + '%' }}</span>
+          </label>
+          <input type="range" min="0" max="90" step="5" v-model.number="micThreshold" class="slider" />
+        </div>
       </div>
     </div>
 
     <!-- ── Summary screen ──────────────────────────────────────── -->
     <div v-else-if="screen === 'summary'" class="card summary-card">
       <h2 class="summary-title">{{ t.summary }}</h2>
+
+      <!-- Accuracy hero -->
+      <div v-if="accuracy !== null" class="accuracy-hero">
+        <span class="accuracy-value" :class="accuracy >= 80 ? 'correct-val' : accuracy >= 50 ? 'warn-val' : 'error-val'">
+          {{ accuracy }}%
+        </span>
+        <span class="accuracy-label">{{ accuracy >= 90 ? '🏆' : accuracy >= 70 ? '👍' : accuracy >= 50 ? '💪' : '📖' }}</span>
+      </div>
 
       <div class="summary-stats">
         <div class="summary-stat">
@@ -325,6 +340,7 @@ const correct = ref(0)
 const errors = ref(0)
 const paused = ref(false)
 const noteStats = ref(Array.from({ length: 7 }, () => ({ correct: 0, wrong: 0 })))
+const wrongPressedIdx = ref(null)
 
 let timerInterval = null
 const elapsedMs = ref(0)
@@ -414,11 +430,13 @@ function answer(noteIdx) {
     errors.value++
     noteStats.value[expected].wrong++
     feedback.value = 'wrong'
+    wrongPressedIdx.value = noteIdx
   }
 
   if (feedbackTimeout) clearTimeout(feedbackTimeout)
   feedbackTimeout = setTimeout(() => {
     feedback.value = null
+    wrongPressedIdx.value = null
     if (isCorrect) pickNextNote()
   }, 400)
 }
@@ -428,8 +446,14 @@ function answerClass(idx) {
   const expected = noteNameIndex(currentPos.value, clef.value)
   if (feedback.value === 'correct' && idx === expected) return 'btn-correct'
   if (feedback.value === 'wrong'   && idx === expected) return 'btn-highlight'
+  if (feedback.value === 'wrong'   && idx === wrongPressedIdx.value) return 'btn-wrong'
   return ''
 }
+
+const accuracy = computed(() => {
+  const total = correct.value + errors.value
+  return total === 0 ? null : Math.round(correct.value / total * 100)
+})
 
 function skipNote() {
   if (feedbackTimeout) clearTimeout(feedbackTimeout)
@@ -541,12 +565,13 @@ onBeforeUnmount(() => {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 20px;
-  padding: 32px 28px;
+  padding: 28px 24px;
   width: 100%;
   max-width: 480px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 18px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.25);
 }
 
 /* Setup */
@@ -631,10 +656,12 @@ onBeforeUnmount(() => {
   background: var(--surface-2);
   color: var(--text);
   border-radius: var(--radius-sm);
-  padding: 10px 20px;
-  font-weight: 500;
+  padding: 10px 16px;
+  font-weight: 600;
   flex: 1;
+  border: 1px solid transparent;
 }
+.btn-secondary:hover { background: var(--border); border-color: var(--border); }
 
 .btn-secondary:hover { background: var(--border); }
 
@@ -745,15 +772,8 @@ onBeforeUnmount(() => {
   padding: 4px 2px 0;
 }
 
-.voice-heard {
-  text-align: center;
-  font-size: 0.82rem;
-  color: var(--text-muted);
-  min-height: 1.3em;
-  opacity: 0;
-  transition: opacity 0.2s ease;
-}
-.voice-heard.visible { opacity: 1; }
+/* legacy, no longer used in game screen — kept for safety */
+.voice-heard { display: none; }
 
 .btn-quit {
   background: transparent;
@@ -795,42 +815,60 @@ onBeforeUnmount(() => {
 /* Game */
 .game-header {
   display: flex;
-  justify-content: space-around;
+  justify-content: space-between;
+  gap: 8px;
 }
 
-.stat {
+.stat-pill {
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 2px;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  border: 1px solid transparent;
 }
 
+.error-pill  { border-color: color-mix(in srgb, var(--error) 30%, transparent); }
+.success-pill { border-color: color-mix(in srgb, var(--success) 30%, transparent); }
+
 .stat-label {
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.07em;
   color: var(--text-muted);
 }
 
 .stat-value {
-  font-size: 1.4rem;
+  font-size: 1.5rem;
   font-weight: 700;
+  line-height: 1;
 }
+
+.error-pill  .stat-value { color: var(--error); }
+.success-pill .stat-value { color: var(--success); }
 
 .error-val { color: var(--error); }
 .correct-val { color: var(--success); }
+.warn-val { color: #f59e0b; }
 
 .context-badge {
   display: flex;
-  align-items: center;
   justify-content: center;
-  gap: 6px;
-  font-size: 0.8rem;
-  color: var(--text-muted);
-  margin-top: -8px;
+  margin-top: -6px;
 }
 
-.context-sep { opacity: 0.4; }
+.clef-tag {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border-radius: 99px;
+  padding: 3px 12px;
+  letter-spacing: 0.03em;
+}
 
 .staff-area {
   position: relative;
@@ -839,15 +877,16 @@ onBeforeUnmount(() => {
 .pause-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(15, 23, 42, 0.8);
+  background: color-mix(in srgb, var(--bg) 75%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 12px;
-  font-size: 1.4rem;
+  font-size: 1.3rem;
   font-weight: 700;
   color: var(--text-muted);
-  backdrop-filter: blur(2px);
+  backdrop-filter: blur(3px);
+  letter-spacing: 0.04em;
 }
 
 .note-buttons {
@@ -860,20 +899,78 @@ onBeforeUnmount(() => {
   background: var(--surface-2);
   color: var(--text);
   border-radius: var(--radius-sm);
-  padding: 14px 4px;
-  font-size: 0.9rem;
-  font-weight: 600;
-  border: 1px solid transparent;
+  padding: 18px 4px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  border: 2px solid transparent;
+  letter-spacing: 0.01em;
 }
 
-.note-btn:hover:not(:disabled) { background: var(--primary); color: white; }
-.note-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.note-btn.btn-correct { background: var(--success); color: white; }
+.note-btn:hover:not(:disabled) {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--primary) 35%, transparent);
+}
+.note-btn:active:not(:disabled) { transform: translateY(0); box-shadow: none; }
+.note-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.note-btn.btn-correct { background: var(--success); border-color: var(--success); color: white; }
 .note-btn.btn-highlight { border-color: var(--success); color: var(--success); }
+.note-btn.btn-wrong { background: var(--error); border-color: var(--error); color: white; }
 
 .controls {
   display: flex;
-  gap: 10px;
+  gap: 8px;
+}
+
+/* Audio input section */
+.audio-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+.audio-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.audio-btns {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.audio-feedback {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.heard-chip {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent);
+  border-radius: 99px;
+  padding: 3px 10px;
+}
+.heard-chip.muted { color: var(--text-muted); background: transparent; border-color: var(--border); }
+
+/* Preview section (setup) */
+.preview-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 /* Summary */
@@ -881,6 +978,25 @@ onBeforeUnmount(() => {
   font-size: 1.4rem;
   font-weight: 700;
   text-align: center;
+}
+
+.accuracy-hero {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 0 4px;
+}
+
+.accuracy-value {
+  font-size: 3rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.accuracy-label {
+  font-size: 2rem;
+  line-height: 1;
 }
 
 .summary-stats {

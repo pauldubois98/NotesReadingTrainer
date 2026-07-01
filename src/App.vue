@@ -78,6 +78,18 @@
           <input type="range" min="0" max="5" v-model.number="maxHistory" class="slider" />
         </div>
 
+        <!-- Note range -->
+        <div class="setting-group">
+          <label class="setting-label">
+            {{ t.lowestNote }} — <span class="slider-value">{{ positionLabel(noteRangeMin, clef) }}</span>
+          </label>
+          <input type="range" :min="-4" :max="noteRangeMax - 1" v-model.number="noteRangeMin" class="slider" />
+          <label class="setting-label" style="margin-top:6px">
+            {{ t.highestNote }} — <span class="slider-value">{{ positionLabel(noteRangeMax, clef) }}</span>
+          </label>
+          <input type="range" :min="noteRangeMin + 1" :max="12" v-model.number="noteRangeMax" class="slider" />
+        </div>
+
       </div>
 
       <!-- Staff preview -->
@@ -279,6 +291,8 @@ const clef = ref('sol2')
 const instrument = ref('piano')
 const maxHistory = ref(3)
 const micThreshold = ref(0)  // 0–90, used as confidence threshold / 100
+const noteRangeMin = ref(-4)
+const noteRangeMax = ref(12)
 
 const availableInstruments = computed(() => INSTRUMENTS_BY_CLEF[clef.value] ?? [])
 
@@ -302,6 +316,15 @@ function noteNameIndex(position, clefType) {
   return ((offset + position) % 7 + 7) % 7
 }
 
+// Returns a human-readable label for a staff position, e.g. "Mi L1" or "Do ▼1"
+function positionLabel(pos, clefType) {
+  const name = t.value.notes[noteNameIndex(pos, clefType)]
+  if (pos < 0)  return `${name} ▼${Math.ceil(-pos / 2)}`
+  if (pos > 8)  return `${name} ▲${Math.ceil((pos - 8) / 2)}`
+  if (pos % 2 === 0) return `${name} L${pos / 2 + 1}`
+  return `${name} E${Math.ceil(pos / 2)}`
+}
+
 // --- Game state ---
 const screen = ref('setup')
 const noteHistory = ref([])   // [{id, pos, result}], last item is always the current note
@@ -317,7 +340,10 @@ const elapsedMs = ref(0)
 let feedbackTimeout = null
 
 const currentPos = computed(() => noteHistory.value.at(-1)?.pos ?? null)
-const previewHistory = computed(() => [{ id: -1, pos: 4, result: null }])
+const previewHistory = computed(() => [
+  { id: -2, pos: noteRangeMin.value, result: null, color: '#6366f1' },
+  { id: -1, pos: noteRangeMax.value, result: null, color: '#6366f1' },
+])
 
 // --- Computed ---
 const formattedTime = computed(() => {
@@ -343,10 +369,12 @@ function breakdownBarWidth(idx) {
 
 // --- Game logic ---
 function pickNextNote() {
+  const minP = noteRangeMin.value
+  const maxP = noteRangeMax.value
   let pos
   do {
-    pos = Math.floor(Math.random() * (MAX_POS - MIN_POS + 1)) + MIN_POS
-  } while (pos === currentPos.value)
+    pos = Math.floor(Math.random() * (maxP - minP + 1)) + minP
+  } while (pos === currentPos.value && maxP > minP)
   const next = [...noteHistory.value, { id: noteIdCounter++, pos, result: null }]
   noteHistory.value = next.slice(-6) // keep enough for the max slider value (5 past + 1 current)
 }

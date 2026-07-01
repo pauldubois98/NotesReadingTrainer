@@ -150,6 +150,8 @@ function isCurrent(idx) {
 
 // Fill color per note slot
 function noteFill(idx) {
+  const item = displayItems.value[idx]
+  if (item?.color) return item.color
   if (isCurrent(idx)) {
     if (props.feedback === 'correct') return 'var(--success)'
     if (props.feedback === 'wrong')   return 'var(--error)'

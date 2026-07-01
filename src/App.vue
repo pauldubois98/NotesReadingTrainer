@@ -159,10 +159,13 @@
         </span>
       </div>
 
-      <!-- Voice heard / raw transcript -->
-      <div class="voice-heard" :class="{ visible: lastHeard || rawTranscript }">
+      <!-- Voice heard / piano detected / raw transcript -->
+      <div class="voice-heard" :class="{ visible: lastHeard || lastHeardHz || rawTranscript }">
         <template v-if="lastHeard">
           {{ t.voiceHeard }}: <strong>{{ lastHeard }}</strong>
+        </template>
+        <template v-else-if="lastHeardHz">
+          🎹 <strong>{{ lastHeardHz.toFixed(0) }} Hz</strong>
         </template>
         <template v-else-if="rawTranscript">
           🔍 "<em>{{ rawTranscript }}</em>"
@@ -181,6 +184,13 @@
           :disabled="paused || modelProgress < 100"
           @click="toggleVoice"
         >🎤</button>
+        <button
+          v-if="pianoSupported"
+          :class="['btn-mic', { active: pianoListening }]"
+          :title="pianoListening ? t.pianoOff : t.pianoOn"
+          :disabled="paused"
+          @click="togglePiano"
+        >🎹</button>
         <button class="btn-skip" :disabled="paused || !!feedback" @click="skipNote">{{ t.skip }}</button>
         <button class="btn-danger" @click="stopGame">{{ t.stop }}</button>
         <button class="btn-quit" @click="quitGame">{{ t.quit }}</button>
@@ -259,6 +269,7 @@ import MusicStaff from './components/MusicStaff.vue'
 import VoiceTrainer from './components/VoiceTrainer.vue'
 import { useI18n } from './i18n.js'
 import { useVoiceInput } from './composables/useVoiceInput.js'
+import { usePitchInput } from './composables/usePitchInput.js'
 
 // --- Theme ---
 const isDark = ref(true)
@@ -432,6 +443,7 @@ function quitGame() {
   stopTimer()
   if (feedbackTimeout) clearTimeout(feedbackTimeout)
   if (isListening.value) toggleVoice()
+  if (pianoListening.value) togglePiano()
   feedback.value = null
   noteHistory.value = []
   screen.value = 'setup'
@@ -441,6 +453,7 @@ function stopGame() {
   stopTimer()
   if (feedbackTimeout) clearTimeout(feedbackTimeout)
   if (isListening.value) toggleVoice()
+  if (pianoListening.value) togglePiano()
   screen.value = 'summary'
 }
 
@@ -463,6 +476,11 @@ const {
   modelProgress, deviceType, micLevel, toggle: toggleVoice,
   collectCounts, personalReady, trainAccuracy, collectSample, trainPersonal, resetPersonal,
 } = useVoiceInput({ lang, onNote: answer, micThreshold })
+
+// --- Piano pitch detection ---
+const lastHeardHz = ref(0)
+const { isSupported: pianoSupported, isListening: pianoListening, toggle: togglePiano } =
+  usePitchInput({ onNote: answer, micThreshold, lastHeardHz })
 
 const showTrainer = ref(false)
 

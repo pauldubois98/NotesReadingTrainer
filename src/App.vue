@@ -57,19 +57,6 @@
           </div>
         </div>
 
-        <!-- Instrument -->
-        <div class="setting-group">
-          <label class="setting-label">{{ t.instrument }}</label>
-          <div class="toggle-group">
-            <button
-              v-for="id in availableInstruments"
-              :key="id"
-              :class="['toggle-btn', { active: instrument === id }]"
-              @click="instrument = id"
-            >{{ t.instruments[id] }}</button>
-          </div>
-        </div>
-
         <!-- Past notes slider -->
         <div class="setting-group">
           <label class="setting-label">
@@ -140,8 +127,6 @@
       <!-- Context badge -->
       <div class="context-badge">
         <span>{{ t.clefs[clef] }}</span>
-        <span class="context-sep">·</span>
-        <span>{{ t.instruments[instrument] }}</span>
       </div>
 
       <!-- Staff -->
@@ -272,7 +257,7 @@
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import MusicStaff from './components/MusicStaff.vue'
 import VoiceTrainer from './components/VoiceTrainer.vue'
-import { useI18n, INSTRUMENTS_BY_CLEF } from './i18n.js'
+import { useI18n } from './i18n.js'
 import { useVoiceInput } from './composables/useVoiceInput.js'
 
 // --- Theme ---
@@ -288,18 +273,13 @@ const t = computed(() => useI18n(lang.value))
 
 // --- Settings ---
 const clef = ref('sol2')
-const instrument = ref('piano')
 const maxHistory = ref(3)
 const micThreshold = ref(0)  // 0–90, used as confidence threshold / 100
 const noteRangeMin = ref(-4)
 const noteRangeMax = ref(12)
 
-const availableInstruments = computed(() => INSTRUMENTS_BY_CLEF[clef.value] ?? [])
-
 function selectClef(c) {
   clef.value = c
-  // Reset to first available instrument for this clef
-  instrument.value = INSTRUMENTS_BY_CLEF[c][0]
 }
 
 // Note names index (0=Do, 1=Ré, 2=Mi, 3=Fa, 4=Sol, 5=La, 6=Si)

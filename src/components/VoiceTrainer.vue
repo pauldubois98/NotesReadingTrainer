@@ -94,164 +94,188 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onUnmounted } from 'vue'
+import { ref, computed, watch, onUnmounted } from "vue";
 
 const props = defineProps({
-  lang:          { type: String,   default: 'fr' },
-  counts:        { type: Array,    required: true },
-  personalReady: { type: Boolean,  default: false },
-  trainAccuracy: { type: Number,   default: 0 },
-  collectSample: { type: Function, required: true },
-  trainPersonal: { type: Function, required: true },
-  resetPersonal: { type: Function, required: true },
-})
+	lang: { type: String, default: "fr" },
+	counts: { type: Array, required: true },
+	personalReady: { type: Boolean, default: false },
+	trainAccuracy: { type: Number, default: 0 },
+	collectSample: { type: Function, required: true },
+	trainPersonal: { type: Function, required: true },
+	resetPersonal: { type: Function, required: true },
+});
 
-const emit = defineEmits(['close', 'trained'])
+const emit = defineEmits(["close", "trained"]);
 
 // ── i18n ────────────────────────────────────────────────────────────────────
 
 const STRINGS = {
-  fr: {
-    title:       'Entraîner votre voix',
-    gridHint:    'Cliquez sur une note pour enregistrer des échantillons.',
-    sayNote:     'Dites « {note} »',
-    holdToRecord:'Maintenir pour enregistrer',
-    recording:   'Enregistrement…',
-    back:        '← Retour',
-    nextNote:    'Note suivante →',
-    trainBtn:    'Entraîner le modèle',
-    training:    'Entraînement…',
-    reset:       'Réinitialiser',
-    modelTrained:'Modèle personnel entraîné !',
-    accuracy:    'Précision : {pct} %',
-    useModel:    'Utiliser ce modèle',
-    retrain:     'Recommencer',
-  },
-  en: {
-    title:       'Train your voice',
-    gridHint:    'Click a note to record samples.',
-    sayNote:     'Say "{note}"',
-    holdToRecord:'Hold to record',
-    recording:   'Recording…',
-    back:        '← Back',
-    nextNote:    'Next note →',
-    trainBtn:    'Train model',
-    training:    'Training…',
-    reset:       'Reset',
-    modelTrained:'Personal model trained!',
-    accuracy:    'Accuracy: {pct}%',
-    useModel:    'Use this model',
-    retrain:     'Retrain',
-  },
-}
-const ui = computed(() => STRINGS[props.lang] || STRINGS.en)
+	fr: {
+		title: "Entraîner votre voix",
+		gridHint: "Cliquez sur une note pour enregistrer des échantillons.",
+		sayNote: "Dites « {note} »",
+		holdToRecord: "Maintenir pour enregistrer",
+		recording: "Enregistrement…",
+		back: "← Retour",
+		nextNote: "Note suivante →",
+		trainBtn: "Entraîner le modèle",
+		training: "Entraînement…",
+		reset: "Réinitialiser",
+		modelTrained: "Modèle personnel entraîné !",
+		accuracy: "Précision : {pct} %",
+		useModel: "Utiliser ce modèle",
+		retrain: "Recommencer",
+	},
+	en: {
+		title: "Train your voice",
+		gridHint: "Click a note to record samples.",
+		sayNote: 'Say "{note}"',
+		holdToRecord: "Hold to record",
+		recording: "Recording…",
+		back: "← Back",
+		nextNote: "Next note →",
+		trainBtn: "Train model",
+		training: "Training…",
+		reset: "Reset",
+		modelTrained: "Personal model trained!",
+		accuracy: "Accuracy: {pct}%",
+		useModel: "Use this model",
+		retrain: "Retrain",
+	},
+};
+const ui = computed(() => STRINGS[props.lang] || STRINGS.en);
 
-const NOTE_NAMES_FR = ['Do', 'Ré', 'Mi', 'Fa', 'Sol', 'La', 'Si']
-const NOTE_NAMES_EN = ['Do', 'Re', 'Mi', 'Fa', 'Sol', 'La', 'Si']
-const noteNames = computed(() => props.lang === 'fr' ? NOTE_NAMES_FR : NOTE_NAMES_EN)
+const NOTE_NAMES_FR = ["Do", "Ré", "Mi", "Fa", "Sol", "La", "Si"];
+const NOTE_NAMES_EN = ["Do", "Re", "Mi", "Fa", "Sol", "La", "Si"];
+const noteNames = computed(() =>
+	props.lang === "fr" ? NOTE_NAMES_FR : NOTE_NAMES_EN,
+);
 
 // ── State ────────────────────────────────────────────────────────────────────
 
-const MIN_SAMPLES   = 5
-const step           = ref('grid')   // 'grid' | 'record' | 'done'
-const activeNote     = ref(null)
-const isRecording    = ref(false)
-const micLevel       = ref(0)
-const training       = ref(false)
-const displayAccuracy = ref(0)       // accuracy shown on 'done' screen
+const MIN_SAMPLES = 5;
+const step = ref("grid"); // 'grid' | 'record' | 'done'
+const activeNote = ref(null);
+const isRecording = ref(false);
+const micLevel = ref(0);
+const training = ref(false);
+const displayAccuracy = ref(0); // accuracy shown on 'done' screen
 
-const allReady    = computed(() => props.counts.every(c => c >= MIN_SAMPLES))
-const hasPersonal = computed(() => props.personalReady || props.counts.some(c => c > 0))
+const allReady = computed(() => props.counts.every((c) => c >= MIN_SAMPLES));
+const hasPersonal = computed(
+	() => props.personalReady || props.counts.some((c) => c > 0),
+);
 
 // Advance to 'done' when training completes (personalReady flips while training was in progress)
-watch(() => props.trainAccuracy, (acc) => {
-  if (training.value && acc > 0) {
-    training.value       = false
-    displayAccuracy.value = acc
-    step.value           = 'done'
-  }
-})
+watch(
+	() => props.trainAccuracy,
+	(acc) => {
+		if (training.value && acc > 0) {
+			training.value = false;
+			displayAccuracy.value = acc;
+			step.value = "done";
+		}
+	},
+);
 
 // ── Audio capture (push-to-record) ───────────────────────────────────────────
 
-let audioCtx        = null
-let processor       = null
-let stream          = null
-let recordedChunks  = []
+let audioCtx = null;
+let processor = null;
+let stream = null;
+let recordedChunks = [];
 
 async function startRecord() {
-  if (isRecording.value) return
-  recordedChunks = []
+	if (isRecording.value) return;
+	recordedChunks = [];
 
-  try {
-    stream   = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
-    audioCtx = new AudioContext({ sampleRate: 16000 })
+	try {
+		stream = await navigator.mediaDevices.getUserMedia({
+			audio: true,
+			video: false,
+		});
+		audioCtx = new AudioContext({ sampleRate: 16000 });
 
-    const source  = audioCtx.createMediaStreamSource(stream)
-    processor     = audioCtx.createScriptProcessor(512, 1, 1)
-    source.connect(processor)
-    processor.connect(audioCtx.destination)
+		const source = audioCtx.createMediaStreamSource(stream);
+		processor = audioCtx.createScriptProcessor(512, 1, 1);
+		source.connect(processor);
+		processor.connect(audioCtx.destination);
 
-    processor.onaudioprocess = (ev) => {
-      const pcm = ev.inputBuffer.getChannelData(0)
-      recordedChunks.push(new Float32Array(pcm))
-      let s = 0; for (let i = 0; i < pcm.length; i++) s += pcm[i] * pcm[i]
-      micLevel.value = Math.min(Math.sqrt(s / pcm.length) * 6, 1)
-    }
-    isRecording.value = true
-  } catch {}
+		processor.onaudioprocess = (ev) => {
+			const pcm = ev.inputBuffer.getChannelData(0);
+			recordedChunks.push(new Float32Array(pcm));
+			let s = 0;
+			for (let i = 0; i < pcm.length; i++) s += pcm[i] * pcm[i];
+			micLevel.value = Math.min(Math.sqrt(s / pcm.length) * 6, 1);
+		};
+		isRecording.value = true;
+	} catch {}
 }
 
 async function stopRecord() {
-  if (!isRecording.value) return
-  isRecording.value = false
-  micLevel.value    = 0
+	if (!isRecording.value) return;
+	isRecording.value = false;
+	micLevel.value = 0;
 
-  processor?.disconnect(); processor = null
-  stream?.getTracks().forEach(t => t.stop()); stream = null
-  try { await audioCtx?.close() } catch {}; audioCtx = null
+	processor?.disconnect();
+	processor = null;
+	stream?.getTracks().forEach((t) => t.stop());
+	stream = null;
+	try {
+		await audioCtx?.close();
+	} catch {}
+	audioCtx = null;
 
-  // Concatenate chunks → send to worker
-  const total = recordedChunks.reduce((s, a) => s + a.length, 0)
-  if (total < 1600) { recordedChunks = []; return }   // < 100 ms — ignore
+	// Concatenate chunks → send to worker
+	const total = recordedChunks.reduce((s, a) => s + a.length, 0);
+	if (total < 1600) {
+		recordedChunks = [];
+		return;
+	} // < 100 ms — ignore
 
-  const audio = new Float32Array(total)
-  let offset  = 0
-  for (const c of recordedChunks) { audio.set(c, offset); offset += c.length }
-  recordedChunks = []
+	const audio = new Float32Array(total);
+	let offset = 0;
+	for (const c of recordedChunks) {
+		audio.set(c, offset);
+		offset += c.length;
+	}
+	recordedChunks = [];
 
-  props.collectSample(audio, activeNote.value)
+	props.collectSample(audio, activeNote.value);
 }
 
 // ── Navigation ───────────────────────────────────────────────────────────────
 
 function selectNote(i) {
-  activeNote.value = i
-  step.value       = 'record'
+	activeNote.value = i;
+	step.value = "record";
 }
 
 function backToGrid() {
-  stopRecord()
-  step.value = 'grid'
+	stopRecord();
+	step.value = "grid";
 }
 
 async function doTrain() {
-  training.value = true
-  // Training runs in the worker (async); wait for 'trained' event via collectSample/trainPersonal
-  // We wire up a one-shot listener via the parent's onTrained prop
-  props.trainPersonal()
+	training.value = true;
+	// Training runs in the worker (async); wait for 'trained' event via collectSample/trainPersonal
+	// We wire up a one-shot listener via the parent's onTrained prop
+	props.trainPersonal();
 }
 
 function doReset() {
-  props.resetPersonal()
-  step.value = 'grid'
+	props.resetPersonal();
+	step.value = "grid";
 }
 
 function retrain() {
-  step.value = 'grid'
+	step.value = "grid";
 }
 
-onUnmounted(() => { stopRecord() })
+onUnmounted(() => {
+	stopRecord();
+});
 </script>
 
 <style scoped>

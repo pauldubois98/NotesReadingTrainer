@@ -101,134 +101,136 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed } from "vue";
 
 const props = defineProps({
-  noteHistory: { type: Array, default: () => [] },
-  clef:        { type: String, default: 'sol' },
-  feedback:    { type: String, default: null },
-  maxHistory:  { type: Number, default: 3 },
-})
+	noteHistory: { type: Array, default: () => [] },
+	clef: { type: String, default: "sol" },
+	feedback: { type: String, default: null },
+	maxHistory: { type: Number, default: 3 },
+});
 
-const WIDTH  = 320
-const HEIGHT = 200
-const NOTE_RX = 10
-const NOTE_RY = 7
-const STEM_LENGTH = 45
+const WIDTH = 320;
+const HEIGHT = 200;
+const NOTE_RX = 10;
+const NOTE_RY = 7;
+const STEM_LENGTH = 45;
 
-const STAFF_TOP_Y  = 55
-const LINE_SPACING = 16
+const STAFF_TOP_Y = 55;
+const LINE_SPACING = 16;
 
 // x positions for up to 6 note slots (oldest → … → current)
-const X_SLOTS = [68, 106, 144, 182, 220, 258]
+const X_SLOTS = [68, 106, 144, 182, 220, 258];
 
 function positionToY(pos) {
-  return STAFF_TOP_Y + (8 - pos) * (LINE_SPACING / 2)
+	return STAFF_TOP_Y + (8 - pos) * (LINE_SPACING / 2);
 }
 function lineY(n) {
-  return positionToY((n - 1) * 2)
+	return positionToY((n - 1) * 2);
 }
 
 // Total visible slots = past notes (capped by maxHistory) + 1 current
-const MAX_SLOTS = 6  // hard visual maximum (X_SLOTS has 6 entries)
+const MAX_SLOTS = 6; // hard visual maximum (X_SLOTS has 6 entries)
 
 const displayItems = computed(() => {
-  const limit = Math.min(props.maxHistory, MAX_SLOTS - 1) + 1  // past + current
-  return props.noteHistory.slice(-limit)
-})
+	const limit = Math.min(props.maxHistory, MAX_SLOTS - 1) + 1; // past + current
+	return props.noteHistory.slice(-limit);
+});
 
 // x coordinate for item at index idx within displayItems
 function slotX(idx) {
-  const offset = MAX_SLOTS - displayItems.value.length
-  return X_SLOTS[idx + offset]
+	const offset = MAX_SLOTS - displayItems.value.length;
+	return X_SLOTS[idx + offset];
 }
 
 // Is this the current (rightmost / active) note?
 function isCurrent(idx) {
-  return idx === displayItems.value.length - 1
+	return idx === displayItems.value.length - 1;
 }
 
 // Fill color per note slot
 function noteFill(idx) {
-  const item = displayItems.value[idx]
-  if (item?.color) return item.color
-  if (isCurrent(idx)) {
-    if (props.feedback === 'correct') return 'var(--success)'
-    if (props.feedback === 'wrong')   return 'var(--error)'
-    return 'var(--text)'
-  }
-  // Past notes are always correct (notes only advance on a correct answer)
-  return 'var(--success)'
+	const item = displayItems.value[idx];
+	if (item?.color) return item.color;
+	if (isCurrent(idx)) {
+		if (props.feedback === "correct") return "var(--success)";
+		if (props.feedback === "wrong") return "var(--error)";
+		return "var(--text)";
+	}
+	// Past notes are always correct (notes only advance on a correct answer)
+	return "var(--success)";
 }
 
 // Stem: goes up (from right side of head) when note is on or below middle line
-function stemOffX(pos) { return pos <= 4 ? NOTE_RX - 1 : -(NOTE_RX - 1) }
+function stemOffX(pos) {
+	return pos <= 4 ? NOTE_RX - 1 : -(NOTE_RX - 1);
+}
 function stemEndY(pos) {
-  const y = positionToY(pos)
-  return pos <= 4 ? y - STEM_LENGTH : y + STEM_LENGTH
+	const y = positionToY(pos);
+	return pos <= 4 ? y - STEM_LENGTH : y + STEM_LENGTH;
 }
 
 // Ledger lines (positions relative to note group's origin at x=0)
 function ledgerAbove(pos) {
-  if (pos <= 8) return []
-  const r = []
-  for (let p = 10; p <= pos; p += 2) r.push(p)
-  return r
+	if (pos <= 8) return [];
+	const r = [];
+	for (let p = 10; p <= pos; p += 2) r.push(p);
+	return r;
 }
 function ledgerBelow(pos) {
-  if (pos >= 0) return []
-  const r = []
-  for (let p = -2; p >= pos; p -= 2) r.push(p)
-  return r
+	if (pos >= 0) return [];
+	const r = [];
+	for (let p = -2; p >= pos; p -= 2) r.push(p);
+	return r;
 }
 
 // Parse clef key (e.g. 'do3', 'fa4', 'sol2') into base type and staff position
 const clefBase = computed(() => {
-  const c = props.clef
-  if (c.startsWith('sol')) return 'sol'
-  if (c.startsWith('do'))  return 'do'
-  return 'fa'
-})
-const clefLine = computed(() => parseInt(props.clef.slice(-1)) || 2)
+	const c = props.clef;
+	if (c.startsWith("sol")) return "sol";
+	if (c.startsWith("do")) return "do";
+	return "fa";
+});
+const clefLine = computed(() => parseInt(props.clef.slice(-1)) || 2);
 // Staff position of the reference line: line n → pos (n-1)*2
-const clefPos  = computed(() => (clefLine.value - 1) * 2)
+const clefPos = computed(() => (clefLine.value - 1) * 2);
 
 // All three SVG files are 100×125 units.
 // Scale derived from the Do clef: bars span y=20.1→105.1 (85 units) = 4 staff spaces.
 // s = 4 * LINE_SPACING / 85 ≈ 0.753
-const CLEF_SCALE = 4 * LINE_SPACING / (105.115576 - 20.115576)  // ≈ 0.753
+const CLEF_SCALE = (4 * LINE_SPACING) / (105.115576 - 20.115576); // ≈ 0.753
 
 // Sol clef: G reference = centre of the G-loop sub-paths.
 //   Sub-path 1 top ≈ y=67.6, sub-path 2 lowest ≈ y=86.2 → centre ≈ 76.9
 // Treble clefs span ~7–8 staff spaces, so use a dedicated larger scale.
 // Scale chosen so the clef extends ~1.5 spaces above line 5 and ~1.5 below line 1.
 //   path y-span ≈ 22–108 (86 units) ≈ 5.4 spaces at CLEF_SCALE, so boost to 1.2×.
-const SOL_SCALE = 1.2
+const SOL_SCALE = 1.2;
 const solClefTransform = computed(() => {
-  const s    = SOL_SCALE
-  const yRef = (67.636287 + 86.2) / 2     // ≈ 76.9 — centre of the G loop
-  const ty   = positionToY(2) - yRef * s
-  const tx   = 4 - 34 * s                  // leftmost path x ≈ 34 → staff x=4
-  return `translate(${tx},${ty}) scale(${s})`
-})
+	const s = SOL_SCALE;
+	const yRef = (67.636287 + 86.2) / 2; // ≈ 76.9 — centre of the G loop
+	const ty = positionToY(2) - yRef * s;
+	const tx = 4 - 34 * s; // leftmost path x ≈ 34 → staff x=4
+	return `translate(${tx},${ty}) scale(${s})`;
+});
 
 // Fa clef: F reference = midpoint of the two dots (y≈37.4 and y≈57.8 → mid ≈ 47.6)
 const faClefTransform = computed(() => {
-  const s    = CLEF_SCALE
-  const yRef = (37.447567 + 57.774023) / 2
-  const ty   = positionToY(clefPos.value) - yRef * s
-  const tx   = 4 - 17.907728 * s           // left edge of hook body → staff x=4
-  return `translate(${tx},${ty}) scale(${s})`
-})
+	const s = CLEF_SCALE;
+	const yRef = (37.447567 + 57.774023) / 2;
+	const ty = positionToY(clefPos.value) - yRef * s;
+	const tx = 4 - 17.907728 * s; // left edge of hook body → staff x=4
+	return `translate(${tx},${ty}) scale(${s})`;
+});
 
 // Do clef: C reference = midpoint of vertical bars = y≈62.6
 const doClefTransform = computed(() => {
-  const s    = CLEF_SCALE
-  const yRef = (20.115576 + 105.115576) / 2
-  const ty   = positionToY(clefPos.value) - yRef * s
-  const tx   = 4 - 22.297015 * s           // left edge of first bar → staff x=4
-  return `translate(${tx},${ty}) scale(${s})`
-})
+	const s = CLEF_SCALE;
+	const yRef = (20.115576 + 105.115576) / 2;
+	const ty = positionToY(clefPos.value) - yRef * s;
+	const tx = 4 - 22.297015 * s; // left edge of first bar → staff x=4
+	return `translate(${tx},${ty}) scale(${s})`;
+});
 </script>
 
 <style scoped>

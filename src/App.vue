@@ -279,239 +279,274 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onBeforeUnmount } from 'vue'
-import MusicStaff from './components/MusicStaff.vue'
-import VoiceTrainer from './components/VoiceTrainer.vue'
-import { useI18n } from './i18n.js'
-import { useVoiceInput } from './composables/useVoiceInput.js'
-import { usePitchInput } from './composables/usePitchInput.js'
+import { ref, computed, watch, onBeforeUnmount } from "vue";
+import MusicStaff from "./components/MusicStaff.vue";
+import VoiceTrainer from "./components/VoiceTrainer.vue";
+import { useI18n } from "./i18n.js";
+import { useVoiceInput } from "./composables/useVoiceInput.js";
+import { usePitchInput } from "./composables/usePitchInput.js";
 
 // --- Theme ---
-const isDark = ref(true)
+const isDark = ref(true);
 function toggleTheme() {
-  isDark.value = !isDark.value
-  document.documentElement.classList.toggle('light', !isDark.value)
+	isDark.value = !isDark.value;
+	document.documentElement.classList.toggle("light", !isDark.value);
 }
 
 // --- i18n ---
-const lang = ref('fr')
-const t = computed(() => useI18n(lang.value))
+const lang = ref("fr");
+const t = computed(() => useI18n(lang.value));
 
 // --- Settings ---
-const clef = ref('sol2')
-const maxHistory = ref(3)
-const micThreshold = ref(0)  // 0–90, used as confidence threshold / 100
-const noteRangeMin = ref(-4)
-const noteRangeMax = ref(12)
+const clef = ref("sol2");
+const maxHistory = ref(3);
+const micThreshold = ref(0); // 0–90, used as confidence threshold / 100
+const noteRangeMin = ref(-4);
+const noteRangeMax = ref(12);
 
 function selectClef(c) {
-  clef.value = c
+	clef.value = c;
 }
 
 // Note names index (0=Do, 1=Ré, 2=Mi, 3=Fa, 4=Sol, 5=La, 6=Si)
 // Offset = note name index at staff position 0 (bottom line) for each clef.
 // Derived from: which note sits on the clef's reference line, then count down.
-const CLEF_OFFSETS = { sol2: 2, do1: 0, do2: 5, do3: 3, do4: 1, fa3: 6, fa4: 4 }
-function clefOffset(clefType) { return CLEF_OFFSETS[clefType] ?? 2 }
+const CLEF_OFFSETS = {
+	sol2: 2,
+	do1: 0,
+	do2: 5,
+	do3: 3,
+	do4: 1,
+	fa3: 6,
+	fa4: 4,
+};
+function clefOffset(clefType) {
+	return CLEF_OFFSETS[clefType] ?? 2;
+}
 
-const MIN_POS = -4
-const MAX_POS = 12
+const MIN_POS = -4;
+const MAX_POS = 12;
 
 function noteNameIndex(position, clefType) {
-  const offset = clefOffset(clefType)
-  return ((offset + position) % 7 + 7) % 7
+	const offset = clefOffset(clefType);
+	return (((offset + position) % 7) + 7) % 7;
 }
 
 // Returns a human-readable label for a staff position, e.g. "Mi L1" or "Do ▼1"
 function positionLabel(pos, clefType) {
-  const name = t.value.notes[noteNameIndex(pos, clefType)]
-  if (pos < 0)  return `${name} ▼${Math.ceil(-pos / 2)}`
-  if (pos > 8)  return `${name} ▲${Math.ceil((pos - 8) / 2)}`
-  if (pos % 2 === 0) return `${name} L${pos / 2 + 1}`
-  return `${name} E${Math.ceil(pos / 2)}`
+	const name = t.value.notes[noteNameIndex(pos, clefType)];
+	if (pos < 0) return `${name} ▼${Math.ceil(-pos / 2)}`;
+	if (pos > 8) return `${name} ▲${Math.ceil((pos - 8) / 2)}`;
+	if (pos % 2 === 0) return `${name} L${pos / 2 + 1}`;
+	return `${name} E${Math.ceil(pos / 2)}`;
 }
 
 // --- Game state ---
-const screen = ref('setup')
-const noteHistory = ref([])   // [{id, pos, result}], last item is always the current note
-let noteIdCounter = 0
-const feedback = ref(null)
-const correct = ref(0)
-const errors = ref(0)
-const paused = ref(false)
-const noteStats = ref(Array.from({ length: 7 }, () => ({ correct: 0, wrong: 0 })))
-const wrongPressedIdx = ref(null)
+const screen = ref("setup");
+const noteHistory = ref([]); // [{id, pos, result}], last item is always the current note
+let noteIdCounter = 0;
+const feedback = ref(null);
+const correct = ref(0);
+const errors = ref(0);
+const paused = ref(false);
+const noteStats = ref(
+	Array.from({ length: 7 }, () => ({ correct: 0, wrong: 0 })),
+);
+const wrongPressedIdx = ref(null);
 
-let timerInterval = null
-const elapsedMs = ref(0)
-let feedbackTimeout = null
+let timerInterval = null;
+const elapsedMs = ref(0);
+let feedbackTimeout = null;
 
-const currentPos = computed(() => noteHistory.value.at(-1)?.pos ?? null)
+const currentPos = computed(() => noteHistory.value.at(-1)?.pos ?? null);
 const previewHistory = computed(() => [
-  { id: -2, pos: noteRangeMin.value, result: null, color: '#6366f1' },
-  { id: -1, pos: noteRangeMax.value, result: null, color: '#6366f1' },
-])
+	{ id: -2, pos: noteRangeMin.value, result: null, color: "#6366f1" },
+	{ id: -1, pos: noteRangeMax.value, result: null, color: "#6366f1" },
+]);
 
 // --- Computed ---
 const formattedTime = computed(() => {
-  const s = Math.floor(elapsedMs.value / 1000)
-  const m = Math.floor(s / 60)
-  return `${m}:${String(s % 60).padStart(2, '0')}`
-})
+	const s = Math.floor(elapsedMs.value / 1000);
+	const m = Math.floor(s / 60);
+	return `${m}:${String(s % 60).padStart(2, "0")}`;
+});
 
-const formattedTotalTime = computed(() => formattedTime.value)
+const formattedTotalTime = computed(() => formattedTime.value);
 
 const avgTimePerNote = computed(() => {
-  const total = correct.value + errors.value
-  if (total === 0) return '—'
-  return (elapsedMs.value / total / 1000).toFixed(1) + ' ' + t.value.seconds
-})
+	const total = correct.value + errors.value;
+	if (total === 0) return "—";
+	return (elapsedMs.value / total / 1000).toFixed(1) + " " + t.value.seconds;
+});
 
 function breakdownBarWidth(idx) {
-  const s = noteStats.value[idx]
-  if (!s) return 0
-  const total = s.correct + s.wrong
-  return total === 0 ? 0 : Math.round((s.correct / total) * 100)
+	const s = noteStats.value[idx];
+	if (!s) return 0;
+	const total = s.correct + s.wrong;
+	return total === 0 ? 0 : Math.round((s.correct / total) * 100);
 }
 
 // --- Game logic ---
 function pickNextNote() {
-  const minP = noteRangeMin.value
-  const maxP = noteRangeMax.value
-  let pos
-  do {
-    pos = Math.floor(Math.random() * (maxP - minP + 1)) + minP
-  } while (pos === currentPos.value && maxP > minP)
-  const next = [...noteHistory.value, { id: noteIdCounter++, pos, result: null }]
-  noteHistory.value = next.slice(-6) // keep enough for the max slider value (5 past + 1 current)
+	const minP = noteRangeMin.value;
+	const maxP = noteRangeMax.value;
+	let pos;
+	do {
+		pos = Math.floor(Math.random() * (maxP - minP + 1)) + minP;
+	} while (pos === currentPos.value && maxP > minP);
+	const next = [
+		...noteHistory.value,
+		{ id: noteIdCounter++, pos, result: null },
+	];
+	noteHistory.value = next.slice(-6); // keep enough for the max slider value (5 past + 1 current)
 }
 
 function startGame() {
-  screen.value = 'game'
-  correct.value = 0
-  errors.value = 0
-  elapsedMs.value = 0
-  paused.value = false
-  noteStats.value = Array.from({ length: 7 }, () => ({ correct: 0, wrong: 0 }))
-  feedback.value = null
-  noteHistory.value = []
-  noteIdCounter = 0
-  pickNextNote()
-  startTimer()
+	screen.value = "game";
+	correct.value = 0;
+	errors.value = 0;
+	elapsedMs.value = 0;
+	paused.value = false;
+	noteStats.value = Array.from({ length: 7 }, () => ({ correct: 0, wrong: 0 }));
+	feedback.value = null;
+	noteHistory.value = [];
+	noteIdCounter = 0;
+	pickNextNote();
+	startTimer();
 }
 
 function startTimer() {
-  let lastTick = performance.now()
-  timerInterval = setInterval(() => {
-    const now = performance.now()
-    if (!paused.value) elapsedMs.value += now - lastTick
-    lastTick = now
-  }, 100)
+	let lastTick = performance.now();
+	timerInterval = setInterval(() => {
+		const now = performance.now();
+		if (!paused.value) elapsedMs.value += now - lastTick;
+		lastTick = now;
+	}, 100);
 }
 
 function stopTimer() {
-  if (timerInterval) { clearInterval(timerInterval); timerInterval = null }
+	if (timerInterval) {
+		clearInterval(timerInterval);
+		timerInterval = null;
+	}
 }
 
 function answer(noteIdx) {
-  if (paused.value || feedback.value) return
-  if (currentPos.value === null) return
-  const expected = noteNameIndex(currentPos.value, clef.value)
-  const isCorrect = noteIdx === expected
+	if (paused.value || feedback.value) return;
+	if (currentPos.value === null) return;
+	const expected = noteNameIndex(currentPos.value, clef.value);
+	const isCorrect = noteIdx === expected;
 
-  if (isCorrect) {
-    correct.value++
-    noteStats.value[expected].correct++
-    feedback.value = 'correct'
-    const h = [...noteHistory.value]
-    h[h.length - 1] = { ...h[h.length - 1], result: 'correct' }
-    noteHistory.value = h
-  } else {
-    errors.value++
-    noteStats.value[expected].wrong++
-    feedback.value = 'wrong'
-    wrongPressedIdx.value = noteIdx
-  }
+	if (isCorrect) {
+		correct.value++;
+		noteStats.value[expected].correct++;
+		feedback.value = "correct";
+		const h = [...noteHistory.value];
+		h[h.length - 1] = { ...h[h.length - 1], result: "correct" };
+		noteHistory.value = h;
+	} else {
+		errors.value++;
+		noteStats.value[expected].wrong++;
+		feedback.value = "wrong";
+		wrongPressedIdx.value = noteIdx;
+	}
 
-  if (feedbackTimeout) clearTimeout(feedbackTimeout)
-  feedbackTimeout = setTimeout(() => {
-    feedback.value = null
-    wrongPressedIdx.value = null
-    if (isCorrect) pickNextNote()
-  }, 400)
+	if (feedbackTimeout) clearTimeout(feedbackTimeout);
+	feedbackTimeout = setTimeout(() => {
+		feedback.value = null;
+		wrongPressedIdx.value = null;
+		if (isCorrect) pickNextNote();
+	}, 400);
 }
 
 function answerClass(idx) {
-  if (!feedback.value) return ''
-  const expected = noteNameIndex(currentPos.value, clef.value)
-  if (feedback.value === 'correct' && idx === expected) return 'btn-correct'
-  if (feedback.value === 'wrong'   && idx === expected) return 'btn-highlight'
-  if (feedback.value === 'wrong'   && idx === wrongPressedIdx.value) return 'btn-wrong'
-  return ''
+	if (!feedback.value) return "";
+	const expected = noteNameIndex(currentPos.value, clef.value);
+	if (feedback.value === "correct" && idx === expected) return "btn-correct";
+	if (feedback.value === "wrong" && idx === expected) return "btn-highlight";
+	if (feedback.value === "wrong" && idx === wrongPressedIdx.value)
+		return "btn-wrong";
+	return "";
 }
 
 const accuracy = computed(() => {
-  const total = correct.value + errors.value
-  return total === 0 ? null : Math.round(correct.value / total * 100)
-})
+	const total = correct.value + errors.value;
+	return total === 0 ? null : Math.round((correct.value / total) * 100);
+});
 
 function skipNote() {
-  if (feedbackTimeout) clearTimeout(feedbackTimeout)
-  feedback.value = null
-  pickNextNote()
+	if (feedbackTimeout) clearTimeout(feedbackTimeout);
+	feedback.value = null;
+	pickNextNote();
 }
 
-function togglePause() { paused.value = !paused.value }
+function togglePause() {
+	paused.value = !paused.value;
+}
 
 function quitGame() {
-  stopTimer()
-  if (feedbackTimeout) clearTimeout(feedbackTimeout)
-  if (isListening.value) toggleVoice()
-  if (pianoListening.value) togglePiano()
-  feedback.value = null
-  noteHistory.value = []
-  screen.value = 'setup'
+	stopTimer();
+	if (feedbackTimeout) clearTimeout(feedbackTimeout);
+	if (isListening.value) toggleVoice();
+	if (pianoListening.value) togglePiano();
+	feedback.value = null;
+	noteHistory.value = [];
+	screen.value = "setup";
 }
 
 function stopGame() {
-  stopTimer()
-  if (feedbackTimeout) clearTimeout(feedbackTimeout)
-  if (isListening.value) toggleVoice()
-  if (pianoListening.value) togglePiano()
-  screen.value = 'summary'
+	stopTimer();
+	if (feedbackTimeout) clearTimeout(feedbackTimeout);
+	if (isListening.value) toggleVoice();
+	if (pianoListening.value) togglePiano();
+	screen.value = "summary";
 }
 
 function playAgain() {
-  screen.value = 'setup'
-  noteHistory.value = []
+	screen.value = "setup";
+	noteHistory.value = [];
 }
 
 // Fraction of the meter bar where the current VAD threshold sits (for the marker line)
 // Mirrors: energyThreshold = 0.10 - sliderPct * 0.088, then ×4 to match the meter scaling
 const thresholdFraction = computed(() => {
-  const sliderPct = micThreshold.value / 100
-  const energy = 0.10 - sliderPct * 0.088
-  return Math.min(energy * 4, 1)
-})
+	const sliderPct = micThreshold.value / 100;
+	const energy = 0.1 - sliderPct * 0.088;
+	return Math.min(energy * 4, 1);
+});
 
 // --- Voice input + personal model ---
 const {
-  isSupported: voiceSupported, isListening, lastHeard, rawTranscript,
-  modelProgress, deviceType, micLevel, toggle: toggleVoice,
-  collectCounts, personalReady, trainAccuracy, collectSample, trainPersonal, resetPersonal,
-} = useVoiceInput({ lang, onNote: answer, micThreshold })
+	isSupported: voiceSupported,
+	isListening,
+	lastHeard,
+	rawTranscript,
+	modelProgress,
+	deviceType,
+	micLevel,
+	toggle: toggleVoice,
+	collectCounts,
+	personalReady,
+	trainAccuracy,
+	collectSample,
+	trainPersonal,
+	resetPersonal,
+} = useVoiceInput({ lang, onNote: answer, micThreshold });
 
 // --- Piano pitch detection ---
-const lastHeardHz = ref(0)
-const { isSupported: pianoSupported, isListening: pianoListening, toggle: togglePiano } =
-  usePitchInput({ onNote: answer, micThreshold, lastHeardHz })
+const lastHeardHz = ref(0);
+const {
+	isSupported: pianoSupported,
+	isListening: pianoListening,
+	toggle: togglePiano,
+} = usePitchInput({ onNote: answer, micThreshold, lastHeardHz });
 
-const showTrainer = ref(false)
+const showTrainer = ref(false);
 
 onBeforeUnmount(() => {
-  stopTimer()
-  if (feedbackTimeout) clearTimeout(feedbackTimeout)
-})
+	stopTimer();
+	if (feedbackTimeout) clearTimeout(feedbackTimeout);
+});
 </script>
 
 <style scoped>

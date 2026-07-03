@@ -470,7 +470,9 @@ function positionToMidi(pos, clefType) {
 	const steps = baseIdx + pos;
 	const noteIdx = ((steps % 7) + 7) % 7;
 	const octave = Math.floor(steps / 7);
-	return baseMidi - NOTE_CHROMATIC[baseIdx] + NOTE_CHROMATIC[noteIdx] + octave * 12;
+	return (
+		baseMidi - NOTE_CHROMATIC[baseIdx] + NOTE_CHROMATIC[noteIdx] + octave * 12
+	);
 }
 
 function playNote(midi) {
@@ -479,7 +481,7 @@ function playNote(midi) {
 	const now = ctx.currentTime;
 	// Piano timbre: fundamental + harmonics with exponential decay
 	[1, 2, 3, 4, 6].forEach((h, i) => {
-		const amp = [0.50, 0.25, 0.12, 0.06, 0.03][i];
+		const amp = [0.5, 0.25, 0.12, 0.06, 0.03][i];
 		const osc = ctx.createOscillator();
 		const g = ctx.createGain();
 		osc.frequency.value = freq * h;
@@ -575,10 +577,18 @@ let feedbackTimeout = null;
 
 const currentPos = computed(() => noteHistory.value.at(-1)?.pos ?? null);
 
-// In ear mode, hide the current (unanswered) note; reveal it during feedback
+// In ear mode: exclude the current (unanswered) note, then append an invisible sentinel
+// so that past answered notes stay in their "history" slots (shifted left) rather than
+// jumping into the rightmost "current" slot where they would render as white/current.
+const EAR_SENTINEL = {
+	id: "__ear_sentinel__",
+	pos: 0,
+	result: null,
+	sentinel: true,
+};
 const displayNoteHistory = computed(() => {
-	if (gameMode.value === "ear" && !feedback.value) {
-		return noteHistory.value.slice(0, -1);
+	if (gameMode.value === "ear") {
+		return [...noteHistory.value.slice(0, -1), EAR_SENTINEL];
 	}
 	return noteHistory.value;
 });
@@ -630,7 +640,9 @@ function pickNextNote() {
 	noteHistory.value = next.slice(-6); // keep enough for the max slider value (5 past + 1 current)
 	if (gameMode.value === "ear") {
 		// Place cursor in the middle of the allowed range for each new note
-		earCursorPos.value = Math.round((noteRangeMin.value + noteRangeMax.value) / 2);
+		earCursorPos.value = Math.round(
+			(noteRangeMin.value + noteRangeMax.value) / 2,
+		);
 		if (earPresMode.value === "audio") setTimeout(playCurrentNote, 80);
 	}
 }

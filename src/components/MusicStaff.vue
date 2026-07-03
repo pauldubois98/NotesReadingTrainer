@@ -48,9 +48,9 @@
         Each note group is translated to its x-slot.
         CSS transition on transform produces the slide-left animation.
       -->
+      <template v-for="(item, idx) in displayItems" :key="item.id">
       <g
-        v-for="(item, idx) in displayItems"
-        :key="item.id"
+        v-if="!item.sentinel"
         :style="{
           transform: `translateX(${slotX(idx)}px)`,
           transition: 'transform 0.28s ease',
@@ -99,6 +99,7 @@
           stroke-width="1.8"
         />
       </g>
+      </template>
       <!-- Cursor note: shown when user moves position with arrow keys -->
       <g v-if="showCursor" style="pointer-events: none;">
         <line

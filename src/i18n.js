@@ -36,7 +36,8 @@ export const translations = {
 		gameModeRead: "Lecture",
 		gameModeEar: "Dictée",
 		replay: "Réécouter",
-		clickStaff: "Cliquez sur la portée · ▲▼ pour déplacer · Entrée pour valider",
+		clickStaff:
+			"Cliquez sur la portée · ▲▼ pour déplacer · Entrée pour valider",
 		earPresText: "Texte",
 		earPresAudio: "Audio",
 		earPresPiano: "Piano",

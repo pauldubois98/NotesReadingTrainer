@@ -99,6 +99,39 @@
           stroke-width="1.8"
         />
       </g>
+      <!-- Cursor note: shown when user moves position with arrow keys -->
+      <g v-if="showCursor" style="pointer-events: none;">
+        <line
+          v-for="lp in ledgerAbove(cursorPos)"
+          :key="`cur_a${lp}`"
+          :x1="GHOST_X - NOTE_RX - 6" :y1="positionToY(lp)"
+          :x2="GHOST_X + NOTE_RX + 6" :y2="positionToY(lp)"
+          class="staff-line" stroke-width="1.5"
+        />
+        <line
+          v-for="lp in ledgerBelow(cursorPos)"
+          :key="`cur_b${lp}`"
+          :x1="GHOST_X - NOTE_RX - 6" :y1="positionToY(lp)"
+          :x2="GHOST_X + NOTE_RX + 6" :y2="positionToY(lp)"
+          class="staff-line" stroke-width="1.5"
+        />
+        <ellipse
+          :cx="GHOST_X"
+          :cy="positionToY(cursorPos)"
+          :rx="NOTE_RX" :ry="NOTE_RY"
+          :transform="`rotate(-15, ${GHOST_X}, ${positionToY(cursorPos)})`"
+          fill="#f59e0b"
+          opacity="0.85"
+        />
+        <line
+          :x1="GHOST_X + stemOffX(cursorPos)"
+          :y1="positionToY(cursorPos)"
+          :x2="GHOST_X + stemOffX(cursorPos)"
+          :y2="stemEndY(cursorPos)"
+          stroke="#f59e0b" stroke-width="1.8" opacity="0.85"
+        />
+      </g>
+
       <!-- Ghost note: shown on hover when staff is clickable (ear mode) -->
       <g v-if="showGhost" style="pointer-events: none; opacity: 0.45;">
         <line
@@ -150,6 +183,7 @@ const props = defineProps({
 	feedback: { type: String, default: null },
 	maxHistory: { type: Number, default: 3 },
 	clickable: { type: Boolean, default: false },
+	cursorPos: { type: Number, default: null },
 });
 
 const emit = defineEmits(["place"]);
@@ -231,8 +265,17 @@ function ledgerBelow(pos) {
 // Ghost note (ear/placement mode)
 const GHOST_X = X_SLOTS[MAX_SLOTS - 1]; // 258 — always the rightmost slot
 const hoverPos = ref(null);
+// Ghost = mouse hover; only when cursor (keyboard) is not also showing at same pos
 const showGhost = computed(
 	() => props.clickable && hoverPos.value !== null && !props.feedback,
+);
+// Cursor = keyboard/arrow navigation; hidden when mouse is hovering
+const showCursor = computed(
+	() =>
+		props.cursorPos !== null &&
+		props.clickable &&
+		!props.feedback &&
+		hoverPos.value === null,
 );
 
 function svgYToPos(event) {

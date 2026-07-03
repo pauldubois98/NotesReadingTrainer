@@ -143,12 +143,6 @@
       <!-- Context badge -->
       <div class="context-badge">
         <span class="clef-tag">{{ t.clefs[clef] }}</span>
-        <button
-          v-if="gameMode === 'ear'"
-          class="btn-replay"
-          :disabled="paused"
-          @click="playCurrentNote"
-        >🔊 {{ t.replay }}</button>
       </div>
 
       <!-- Staff -->
@@ -159,125 +153,188 @@
           :feedback="feedback"
           :max-history="maxHistory"
           :clickable="gameMode === 'ear'"
+          :cursor-pos="gameMode === 'ear' ? earCursorPos : null"
           @place="handleStaffPlace"
         />
         <div v-if="paused" class="pause-overlay">⏸ {{ t.paused }}</div>
       </div>
 
-      <!-- Ear mode hint -->
-      <p v-if="gameMode === 'ear' && !paused" class="ear-hint">{{ t.clickStaff }}</p>
-
-      <!-- Input mode tabs -->
-      <div class="input-tabs">
-        <button :class="['input-tab', { active: inputMode === 'buttons' }]" @click="setInputMode('buttons')">
-          ⌨ {{ t.inputModeButtons }}
-        </button>
-        <button
-          v-if="voiceSupported"
-          :class="['input-tab', { active: inputMode === 'voice' }]"
-          @click="setInputMode('voice')"
-        >🎤 {{ t.inputModeVoice }}</button>
-        <button
-          v-if="pianoSupported"
-          :class="['input-tab', { active: inputMode === 'pianoAudio' }]"
-          @click="setInputMode('pianoAudio')"
-        >🎙 {{ t.inputModePianoAudio }}</button>
-        <button :class="['input-tab', { active: inputMode === 'pianoKeys' }]" @click="setInputMode('pianoKeys')">
-          🎹 {{ t.inputModePianoKeys }}
-        </button>
-      </div>
-
-      <!-- Buttons mode -->
-      <div v-if="inputMode === 'buttons'" class="note-buttons">
-        <button
-          v-for="(note, idx) in t.notes"
-          :key="idx"
-          :class="['note-btn', answerClass(idx)]"
-          :disabled="paused"
-          @click="answer(idx)"
-        >{{ note }}</button>
-      </div>
-
-      <!-- Voice mode -->
-      <div v-else-if="inputMode === 'voice'" class="audio-mode-section">
-        <div class="audio-row">
+      <!-- ── DICTÉE mode: place the note on the staff ─────────────── -->
+      <template v-if="gameMode === 'ear'">
+        <!-- Arrow buttons + validate row -->
+        <div class="ear-answer-row">
+          <div class="ear-arrows">
+            <button class="btn-arrow" :disabled="paused || earCursorPos >= noteRangeMax" @click="moveEarCursor(1)">▲</button>
+            <button class="btn-arrow" :disabled="paused || earCursorPos <= noteRangeMin" @click="moveEarCursor(-1)">▼</button>
+          </div>
+          <span class="ear-hint">{{ t.clickStaff }}</span>
           <button
-            :class="['btn-mic', { active: isListening }]"
-            :title="isListening ? t.voiceOff : t.voiceOn"
-            :disabled="paused || modelProgress < 100"
-            @click="toggleVoice"
-          >🎤</button>
-          <div class="audio-feedback">
-            <template v-if="modelProgress < 100">
-              <span class="model-loading-label">{{ modelProgress }}%</span>
-              <div class="model-bar-wrap">
-                <div class="model-bar" :style="{ width: modelProgress + '%' }" />
-              </div>
-            </template>
-            <template v-else-if="lastHeard">
-              <span class="heard-chip">🎤 {{ lastHeard }}</span>
-            </template>
-            <template v-else-if="rawTranscript">
-              <span class="heard-chip muted">🔍 {{ rawTranscript }}</span>
-            </template>
-            <span v-else :class="['device-badge', deviceType]">
-              {{ deviceType === 'kws' ? '⚡ KWS' : deviceType === 'webgpu' ? '⚡ GPU' : '🖥 CPU' }}
-            </span>
+            class="btn-confirm"
+            :disabled="paused || earCursorPos === null || !!feedback"
+            @click="confirmEarCursor"
+          >✓ {{ t.confirm }}</button>
+        </div>
+
+        <!-- Question presentation tabs -->
+        <div class="input-tabs">
+          <button :class="['input-tab', { active: earPresMode === 'text' }]" @click="setEarPresMode('text')">
+            📝 {{ t.earPresText }}
+          </button>
+          <button :class="['input-tab', { active: earPresMode === 'audio' }]" @click="setEarPresMode('audio')">
+            🔊 {{ t.earPresAudio }}
+          </button>
+          <button :class="['input-tab', { active: earPresMode === 'piano' }]" @click="setEarPresMode('piano')">
+            🎹 {{ t.earPresPiano }}
+          </button>
+        </div>
+
+        <!-- Text: show the note name -->
+        <div v-if="earPresMode === 'text'" class="ear-pres-box">
+          <span class="ear-note-name">
+            {{ currentPos !== null ? t.notes[noteNameIndex(currentPos, clef)] : '—' }}
+          </span>
+        </div>
+
+        <!-- Audio: replay button -->
+        <div v-else-if="earPresMode === 'audio'" class="ear-pres-box">
+          <button class="btn-replay-large" :disabled="paused" @click="playCurrentNote">
+            🔊 {{ t.replay }}
+          </button>
+        </div>
+
+        <!-- Piano: show keyboard with target key highlighted -->
+        <div v-else-if="earPresMode === 'piano'" class="piano-kb-wrap">
+          <div class="piano-kb">
+            <div
+              v-for="(note, idx) in t.notes"
+              :key="idx"
+              :class="['pk-white', 'pk-noop',
+                       currentPos !== null && idx === noteNameIndex(currentPos, clef) ? 'pk-target' : '']"
+            >
+              <span class="pk-label">{{ note }}</span>
+            </div>
+            <div class="pk-black" style="left:10.2%"></div>
+            <div class="pk-black" style="left:24.5%"></div>
+            <div class="pk-black" style="left:52.9%"></div>
+            <div class="pk-black" style="left:67.1%"></div>
+            <div class="pk-black" style="left:81.4%"></div>
           </div>
         </div>
-        <div v-if="isListening" class="mic-meter-wrap">
-          <div
-            class="mic-meter-bar"
-            :class="{ speaking: micLevel > thresholdFraction }"
-            :style="{ width: (micLevel * 100).toFixed(1) + '%' }"
-          />
-          <div class="mic-meter-threshold" :style="{ left: (thresholdFraction * 100).toFixed(1) + '%' }" />
-        </div>
-        <div v-if="isListening" class="mic-threshold-row">
-          <label class="setting-label">
-            {{ t.micThreshold }} — <span class="slider-value">{{ micThreshold === 0 ? t.micOff : micThreshold + '%' }}</span>
-          </label>
-          <input type="range" min="0" max="90" step="5" v-model.number="micThreshold" class="slider" />
-        </div>
-      </div>
+      </template>
 
-      <!-- Piano audio mode -->
-      <div v-else-if="inputMode === 'pianoAudio'" class="audio-mode-section">
-        <div class="audio-row">
+      <!-- ── LECTURE mode: identify the displayed note ─────────────── -->
+      <template v-else>
+        <!-- Input mode tabs -->
+        <div class="input-tabs">
+          <button :class="['input-tab', { active: inputMode === 'buttons' }]" @click="setInputMode('buttons')">
+            ⌨ {{ t.inputModeButtons }}
+          </button>
           <button
-            :class="['btn-mic', { active: pianoListening }]"
-            :title="pianoListening ? t.pianoOff : t.pianoOn"
-            :disabled="paused"
-            @click="togglePiano"
-          >🎹</button>
-          <div class="audio-feedback">
-            <template v-if="lastHeardHz">
-              <span class="heard-chip">🎹 {{ lastHeardHz.toFixed(0) }} Hz</span>
-            </template>
-            <span v-else class="setting-label">{{ pianoListening ? t.pianoOff : t.pianoOn }}</span>
-          </div>
+            v-if="voiceSupported"
+            :class="['input-tab', { active: inputMode === 'voice' }]"
+            @click="setInputMode('voice')"
+          >🎤 {{ t.inputModeVoice }}</button>
+          <button
+            v-if="pianoSupported"
+            :class="['input-tab', { active: inputMode === 'pianoAudio' }]"
+            @click="setInputMode('pianoAudio')"
+          >🎙 {{ t.inputModePianoAudio }}</button>
+          <button :class="['input-tab', { active: inputMode === 'pianoKeys' }]" @click="setInputMode('pianoKeys')">
+            🎹 {{ t.inputModePianoKeys }}
+          </button>
         </div>
-      </div>
 
-      <!-- Piano keys mode -->
-      <div v-else-if="inputMode === 'pianoKeys'" class="piano-kb-wrap">
-        <div class="piano-kb">
-          <div
+        <!-- Buttons mode -->
+        <div v-if="inputMode === 'buttons'" class="note-buttons">
+          <button
             v-for="(note, idx) in t.notes"
             :key="idx"
-            :class="['pk-white', answerClass(idx), { 'pk-disabled': paused }]"
-            @click="!paused && answer(idx)"
-          >
-            <span class="pk-label">{{ note }}</span>
-          </div>
-          <!-- Decorative black keys — positioned between C/D, D/E, F/G, G/A, A/B -->
-          <div class="pk-black" style="left:10.2%"></div>
-          <div class="pk-black" style="left:24.5%"></div>
-          <div class="pk-black" style="left:52.9%"></div>
-          <div class="pk-black" style="left:67.1%"></div>
-          <div class="pk-black" style="left:81.4%"></div>
+            :class="['note-btn', answerClass(idx)]"
+            :disabled="paused"
+            @click="answer(idx)"
+          >{{ note }}</button>
         </div>
-      </div>
+
+        <!-- Voice mode -->
+        <div v-else-if="inputMode === 'voice'" class="audio-mode-section">
+          <div class="audio-row">
+            <button
+              :class="['btn-mic', { active: isListening }]"
+              :title="isListening ? t.voiceOff : t.voiceOn"
+              :disabled="paused || modelProgress < 100"
+              @click="toggleVoice"
+            >🎤</button>
+            <div class="audio-feedback">
+              <template v-if="modelProgress < 100">
+                <span class="model-loading-label">{{ modelProgress }}%</span>
+                <div class="model-bar-wrap">
+                  <div class="model-bar" :style="{ width: modelProgress + '%' }" />
+                </div>
+              </template>
+              <template v-else-if="lastHeard">
+                <span class="heard-chip">🎤 {{ lastHeard }}</span>
+              </template>
+              <template v-else-if="rawTranscript">
+                <span class="heard-chip muted">🔍 {{ rawTranscript }}</span>
+              </template>
+              <span v-else :class="['device-badge', deviceType]">
+                {{ deviceType === 'kws' ? '⚡ KWS' : deviceType === 'webgpu' ? '⚡ GPU' : '🖥 CPU' }}
+              </span>
+            </div>
+          </div>
+          <div v-if="isListening" class="mic-meter-wrap">
+            <div
+              class="mic-meter-bar"
+              :class="{ speaking: micLevel > thresholdFraction }"
+              :style="{ width: (micLevel * 100).toFixed(1) + '%' }"
+            />
+            <div class="mic-meter-threshold" :style="{ left: (thresholdFraction * 100).toFixed(1) + '%' }" />
+          </div>
+          <div v-if="isListening" class="mic-threshold-row">
+            <label class="setting-label">
+              {{ t.micThreshold }} — <span class="slider-value">{{ micThreshold === 0 ? t.micOff : micThreshold + '%' }}</span>
+            </label>
+            <input type="range" min="0" max="90" step="5" v-model.number="micThreshold" class="slider" />
+          </div>
+        </div>
+
+        <!-- Piano audio mode -->
+        <div v-else-if="inputMode === 'pianoAudio'" class="audio-mode-section">
+          <div class="audio-row">
+            <button
+              :class="['btn-mic', { active: pianoListening }]"
+              :title="pianoListening ? t.pianoOff : t.pianoOn"
+              :disabled="paused"
+              @click="togglePiano"
+            >🎹</button>
+            <div class="audio-feedback">
+              <template v-if="lastHeardHz">
+                <span class="heard-chip">🎹 {{ lastHeardHz.toFixed(0) }} Hz</span>
+              </template>
+              <span v-else class="setting-label">{{ pianoListening ? t.pianoOff : t.pianoOn }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Piano keys mode -->
+        <div v-else-if="inputMode === 'pianoKeys'" class="piano-kb-wrap">
+          <div class="piano-kb">
+            <div
+              v-for="(note, idx) in t.notes"
+              :key="idx"
+              :class="['pk-white', answerClass(idx), { 'pk-disabled': paused }]"
+              @click="!paused && answer(idx)"
+            >
+              <span class="pk-label">{{ note }}</span>
+            </div>
+            <div class="pk-black" style="left:10.2%"></div>
+            <div class="pk-black" style="left:24.5%"></div>
+            <div class="pk-black" style="left:52.9%"></div>
+            <div class="pk-black" style="left:67.1%"></div>
+            <div class="pk-black" style="left:81.4%"></div>
+          </div>
+        </div>
+      </template>
 
       <!-- Game controls -->
       <div class="controls">
@@ -346,7 +403,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onBeforeUnmount } from "vue";
+import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
 import MusicStaff from "./components/MusicStaff.vue";
 import VoiceTrainer from "./components/VoiceTrainer.vue";
 import { useI18n } from "./i18n.js";
@@ -460,6 +517,44 @@ function positionLabel(pos, clefType) {
 
 // --- Game mode ---
 const gameMode = ref("read"); // 'read' | 'ear'
+const earPresMode = ref("audio"); // 'text' | 'audio' | 'piano'
+const earCursorPos = ref(null); // staff position of the keyboard/arrow cursor
+
+function setEarPresMode(mode) {
+	earPresMode.value = mode;
+	if (mode === "audio" && currentPos.value !== null && !paused.value) {
+		setTimeout(playCurrentNote, 50);
+	}
+}
+
+function moveEarCursor(dir) {
+	if (earCursorPos.value === null) return;
+	earCursorPos.value = Math.max(
+		noteRangeMin.value,
+		Math.min(noteRangeMax.value, earCursorPos.value + dir),
+	);
+}
+
+function confirmEarCursor() {
+	if (earCursorPos.value !== null && !paused.value && !feedback.value) {
+		handleStaffPlace(earCursorPos.value);
+	}
+}
+
+function handleGlobalKeydown(e) {
+	if (screen.value !== "game" || gameMode.value !== "ear") return;
+	if (paused.value || feedback.value) return;
+	if (e.key === "ArrowUp") {
+		e.preventDefault();
+		moveEarCursor(1);
+	} else if (e.key === "ArrowDown") {
+		e.preventDefault();
+		moveEarCursor(-1);
+	} else if (e.key === "Enter" || e.key === " ") {
+		e.preventDefault();
+		confirmEarCursor();
+	}
+}
 
 // --- Game state ---
 const screen = ref("setup");
@@ -533,7 +628,11 @@ function pickNextNote() {
 		{ id: noteIdCounter++, pos, result: null },
 	];
 	noteHistory.value = next.slice(-6); // keep enough for the max slider value (5 past + 1 current)
-	if (gameMode.value === "ear") setTimeout(playCurrentNote, 80);
+	if (gameMode.value === "ear") {
+		// Place cursor in the middle of the allowed range for each new note
+		earCursorPos.value = Math.round((noteRangeMin.value + noteRangeMax.value) / 2);
+		if (earPresMode.value === "audio") setTimeout(playCurrentNote, 80);
+	}
 }
 
 function startGame() {
@@ -694,9 +793,11 @@ function setInputMode(mode) {
 
 const showTrainer = ref(false);
 
+onMounted(() => window.addEventListener("keydown", handleGlobalKeydown));
 onBeforeUnmount(() => {
 	stopTimer();
 	if (feedbackTimeout) clearTimeout(feedbackTimeout);
+	window.removeEventListener("keydown", handleGlobalKeydown);
 });
 </script>
 
@@ -1048,29 +1149,98 @@ onBeforeUnmount(() => {
   margin-top: -6px;
 }
 
-.btn-replay {
-  padding: 4px 12px;
-  border-radius: 99px;
-  background: color-mix(in srgb, var(--primary) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--primary) 35%, transparent);
+/* Ear mode answer row (arrows + hint) */
+.ear-answer-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: center;
+  margin-top: -4px;
+}
+
+.ear-hint {
+  flex: 1;
+  text-align: center;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  letter-spacing: 0.01em;
+}
+
+.ear-arrows {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.btn-arrow {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.btn-arrow:hover:not(:disabled) { background: var(--primary); color: white; border-color: var(--primary); }
+.btn-arrow:disabled { opacity: 0.3; cursor: not-allowed; }
+
+.btn-confirm {
+  padding: 0 14px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  background: var(--primary);
+  color: white;
+  border: none;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.12s;
+}
+.btn-confirm:hover:not(:disabled) { background: var(--primary-hover); }
+.btn-confirm:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* Ear presentation content boxes */
+.ear-pres-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 0 10px;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  min-height: 72px;
+}
+
+.ear-note-name {
+  font-size: 2.8rem;
+  font-weight: 800;
   color: var(--primary);
-  font-size: 0.78rem;
-  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.btn-replay-large {
+  padding: 12px 28px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  border: 1.5px solid color-mix(in srgb, var(--primary) 40%, transparent);
+  color: var(--primary);
+  font-size: 1rem;
+  font-weight: 700;
   cursor: pointer;
   transition: background 0.15s;
 }
-.btn-replay:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--primary) 22%, transparent);
-}
-.btn-replay:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-replay-large:hover:not(:disabled) { background: var(--primary); color: white; }
+.btn-replay-large:disabled { opacity: 0.4; cursor: not-allowed; }
 
-.ear-hint {
-  text-align: center;
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  margin: -6px 0 0;
-  letter-spacing: 0.02em;
-}
+/* Piano target key (ear / piano presentation) */
+.pk-noop { cursor: default !important; }
+.pk-noop:hover { background: #efefef !important; box-shadow: none !important; }
+.pk-target { background: color-mix(in srgb, var(--primary) 30%, #efefef) !important; border-color: var(--primary) !important; }
+.pk-target .pk-label { color: var(--primary) !important; }
 
 .clef-tag {
   font-size: 0.75rem;

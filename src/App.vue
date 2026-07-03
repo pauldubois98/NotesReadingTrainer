@@ -19,6 +19,19 @@
       <p class="subtitle">{{ t.subtitle }}</p>
 
       <div class="settings">
+        <!-- Game mode -->
+        <div class="setting-group">
+          <label class="setting-label">{{ t.gameMode }}</label>
+          <div class="toggle-group">
+            <button :class="['toggle-btn', { active: gameMode === 'read' }]" @click="gameMode = 'read'">
+              📖 {{ t.gameModeRead }}
+            </button>
+            <button :class="['toggle-btn', { active: gameMode === 'ear' }]" @click="gameMode = 'ear'">
+              🎵 {{ t.gameModeEar }}
+            </button>
+          </div>
+        </div>
+
         <!-- Clef -->
         <div class="setting-group">
           <label class="setting-label">{{ t.clef }}</label>
@@ -130,13 +143,29 @@
       <!-- Context badge -->
       <div class="context-badge">
         <span class="clef-tag">{{ t.clefs[clef] }}</span>
+        <button
+          v-if="gameMode === 'ear'"
+          class="btn-replay"
+          :disabled="paused"
+          @click="playCurrentNote"
+        >🔊 {{ t.replay }}</button>
       </div>
 
       <!-- Staff -->
       <div class="staff-area">
-        <MusicStaff :note-history="noteHistory" :clef="clef" :feedback="feedback" :max-history="maxHistory" />
+        <MusicStaff
+          :note-history="displayNoteHistory"
+          :clef="clef"
+          :feedback="feedback"
+          :max-history="maxHistory"
+          :clickable="gameMode === 'ear'"
+          @place="handleStaffPlace"
+        />
         <div v-if="paused" class="pause-overlay">⏸ {{ t.paused }}</div>
       </div>
+
+      <!-- Ear mode hint -->
+      <p v-if="gameMode === 'ear' && !paused" class="ear-hint">{{ t.clickStaff }}</p>
 
       <!-- Input mode tabs -->
       <div class="input-tabs">
@@ -365,6 +394,56 @@ function clefOffset(clefType) {
 const MIN_POS = -4;
 const MAX_POS = 12;
 
+// MIDI note number at staff position 0 for each clef
+const CLEF_BASE_MIDI = {
+	sol2: 64, // E4
+	do1: 60, // C4
+	do2: 57, // A3
+	do3: 53, // F3
+	do4: 50, // D3
+	fa3: 47, // B2
+	fa4: 43, // G2
+};
+// Semitone offset from C for each diatonic note (Do Ré Mi Fa Sol La Si)
+const NOTE_CHROMATIC = [0, 2, 4, 5, 7, 9, 11];
+
+function positionToMidi(pos, clefType) {
+	const baseIdx = clefOffset(clefType);
+	const baseMidi = CLEF_BASE_MIDI[clefType] ?? 64;
+	const steps = baseIdx + pos;
+	const noteIdx = ((steps % 7) + 7) % 7;
+	const octave = Math.floor(steps / 7);
+	return baseMidi - NOTE_CHROMATIC[baseIdx] + NOTE_CHROMATIC[noteIdx] + octave * 12;
+}
+
+function playNote(midi) {
+	const ctx = new AudioContext();
+	const freq = 440 * Math.pow(2, (midi - 69) / 12);
+	const now = ctx.currentTime;
+	// Piano timbre: fundamental + harmonics with exponential decay
+	[1, 2, 3, 4, 6].forEach((h, i) => {
+		const amp = [0.50, 0.25, 0.12, 0.06, 0.03][i];
+		const osc = ctx.createOscillator();
+		const g = ctx.createGain();
+		osc.frequency.value = freq * h;
+		osc.type = "sine";
+		g.gain.setValueAtTime(0, now);
+		g.gain.linearRampToValueAtTime(amp, now + 0.006);
+		g.gain.exponentialRampToValueAtTime(amp * 0.15, now + 0.5);
+		g.gain.exponentialRampToValueAtTime(0.0001, now + 2.0);
+		osc.connect(g);
+		g.connect(ctx.destination);
+		osc.start(now);
+		osc.stop(now + 2.1);
+	});
+	setTimeout(() => ctx.close().catch(() => {}), 2500);
+}
+
+function playCurrentNote() {
+	if (currentPos.value === null) return;
+	playNote(positionToMidi(currentPos.value, clef.value));
+}
+
 function noteNameIndex(position, clefType) {
 	const offset = clefOffset(clefType);
 	return (((offset + position) % 7) + 7) % 7;
@@ -378,6 +457,9 @@ function positionLabel(pos, clefType) {
 	if (pos % 2 === 0) return `${name} L${pos / 2 + 1}`;
 	return `${name} E${Math.ceil(pos / 2)}`;
 }
+
+// --- Game mode ---
+const gameMode = ref("read"); // 'read' | 'ear'
 
 // --- Game state ---
 const screen = ref("setup");
@@ -397,6 +479,20 @@ const elapsedMs = ref(0);
 let feedbackTimeout = null;
 
 const currentPos = computed(() => noteHistory.value.at(-1)?.pos ?? null);
+
+// In ear mode, hide the current (unanswered) note; reveal it during feedback
+const displayNoteHistory = computed(() => {
+	if (gameMode.value === "ear" && !feedback.value) {
+		return noteHistory.value.slice(0, -1);
+	}
+	return noteHistory.value;
+});
+
+// Clicking the staff in ear mode: translate position to note name index
+function handleStaffPlace(pos) {
+	answer(noteNameIndex(pos, clef.value));
+}
+
 const previewHistory = computed(() => [
 	{ id: -2, pos: noteRangeMin.value, result: null, color: "#6366f1" },
 	{ id: -1, pos: noteRangeMax.value, result: null, color: "#6366f1" },
@@ -437,6 +533,7 @@ function pickNextNote() {
 		{ id: noteIdCounter++, pos, result: null },
 	];
 	noteHistory.value = next.slice(-6); // keep enough for the max slider value (5 past + 1 current)
+	if (gameMode.value === "ear") setTimeout(playCurrentNote, 80);
 }
 
 function startGame() {
@@ -490,11 +587,12 @@ function answer(noteIdx) {
 	}
 
 	if (feedbackTimeout) clearTimeout(feedbackTimeout);
+	const feedbackMs = gameMode.value === "ear" ? 800 : 400;
 	feedbackTimeout = setTimeout(() => {
 		feedback.value = null;
 		wrongPressedIdx.value = null;
 		if (isCorrect) pickNextNote();
-	}, 400);
+	}, feedbackMs);
 }
 
 function answerClass(idx) {
@@ -944,8 +1042,34 @@ onBeforeUnmount(() => {
 
 .context-badge {
   display: flex;
+  align-items: center;
   justify-content: center;
+  gap: 8px;
   margin-top: -6px;
+}
+
+.btn-replay {
+  padding: 4px 12px;
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--primary) 35%, transparent);
+  color: var(--primary);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-replay:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--primary) 22%, transparent);
+}
+.btn-replay:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.ear-hint {
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin: -6px 0 0;
+  letter-spacing: 0.02em;
 }
 
 .clef-tag {

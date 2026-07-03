@@ -1,6 +1,16 @@
 <template>
   <div class="staff-wrapper">
-    <svg :viewBox="`0 0 ${WIDTH} ${HEIGHT}`" class="staff-svg" role="img" aria-label="Music staff">
+    <svg
+      :viewBox="`0 0 ${WIDTH} ${HEIGHT}`"
+      :class="['staff-svg', { 'staff-clickable': clickable }]"
+      role="img"
+      aria-label="Music staff"
+      @click="handleSvgClick"
+      @mousemove="handleSvgMouseMove"
+      @mouseleave="hoverPos = null"
+      @touchmove.prevent="handleSvgTouchMove"
+      @touchend.prevent="handleSvgTouchEnd"
+    >
 
       <!-- Staff lines (run through the clef and the full note area) -->
       <line
@@ -89,6 +99,37 @@
           stroke-width="1.8"
         />
       </g>
+      <!-- Ghost note: shown on hover when staff is clickable (ear mode) -->
+      <g v-if="showGhost" style="pointer-events: none; opacity: 0.45;">
+        <line
+          v-for="lp in ledgerAbove(hoverPos)"
+          :key="`gh_a${lp}`"
+          :x1="GHOST_X - NOTE_RX - 6" :y1="positionToY(lp)"
+          :x2="GHOST_X + NOTE_RX + 6" :y2="positionToY(lp)"
+          class="staff-line" stroke-width="1.5"
+        />
+        <line
+          v-for="lp in ledgerBelow(hoverPos)"
+          :key="`gh_b${lp}`"
+          :x1="GHOST_X - NOTE_RX - 6" :y1="positionToY(lp)"
+          :x2="GHOST_X + NOTE_RX + 6" :y2="positionToY(lp)"
+          class="staff-line" stroke-width="1.5"
+        />
+        <ellipse
+          :cx="GHOST_X"
+          :cy="positionToY(hoverPos)"
+          :rx="NOTE_RX" :ry="NOTE_RY"
+          :transform="`rotate(-15, ${GHOST_X}, ${positionToY(hoverPos)})`"
+          fill="var(--primary)"
+        />
+        <line
+          :x1="GHOST_X + stemOffX(hoverPos)"
+          :y1="positionToY(hoverPos)"
+          :x2="GHOST_X + stemOffX(hoverPos)"
+          :y2="stemEndY(hoverPos)"
+          stroke="var(--primary)" stroke-width="1.8"
+        />
+      </g>
     </svg>
 
     <!-- Feedback badge (correct / wrong flash) -->
@@ -101,14 +142,17 @@
 </template>
 
 <script setup>
-import { computed } from "vue";
+import { computed, ref } from "vue";
 
 const props = defineProps({
 	noteHistory: { type: Array, default: () => [] },
 	clef: { type: String, default: "sol" },
 	feedback: { type: String, default: null },
 	maxHistory: { type: Number, default: 3 },
+	clickable: { type: Boolean, default: false },
 });
+
+const emit = defineEmits(["place"]);
 
 const WIDTH = 320;
 const HEIGHT = 200;
@@ -184,6 +228,47 @@ function ledgerBelow(pos) {
 	return r;
 }
 
+// Ghost note (ear/placement mode)
+const GHOST_X = X_SLOTS[MAX_SLOTS - 1]; // 258 — always the rightmost slot
+const hoverPos = ref(null);
+const showGhost = computed(
+	() => props.clickable && hoverPos.value !== null && !props.feedback,
+);
+
+function svgYToPos(event) {
+	const svgEl = event.currentTarget;
+	const rect = svgEl.getBoundingClientRect();
+	const clientY = event.touches ? event.touches[0].clientY : event.clientY;
+	const svgY = (clientY - rect.top) * (HEIGHT / rect.height);
+	const pos = Math.round(8 - (svgY - STAFF_TOP_Y) / (LINE_SPACING / 2));
+	return Math.max(-4, Math.min(12, pos));
+}
+
+function handleSvgClick(event) {
+	if (!props.clickable) return;
+	emit("place", svgYToPos(event));
+	hoverPos.value = null;
+}
+
+function handleSvgMouseMove(event) {
+	if (!props.clickable) {
+		hoverPos.value = null;
+		return;
+	}
+	hoverPos.value = svgYToPos(event);
+}
+
+function handleSvgTouchMove(event) {
+	if (!props.clickable) return;
+	hoverPos.value = svgYToPos(event);
+}
+
+function handleSvgTouchEnd() {
+	if (!props.clickable || hoverPos.value === null) return;
+	emit("place", hoverPos.value);
+	hoverPos.value = null;
+}
+
 // Parse clef key (e.g. 'do3', 'fa4', 'sol2') into base type and staff position
 const clefBase = computed(() => {
 	const c = props.clef;
@@ -255,6 +340,7 @@ const doClefTransform = computed(() => {
 .clef-svg-path { fill: var(--text-muted); stroke: none; }
 
 .note-head { transition: fill 0.15s ease; }
+.staff-clickable { cursor: crosshair; }
 
 .feedback-badge {
   position: absolute;

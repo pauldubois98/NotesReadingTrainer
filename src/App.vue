@@ -138,8 +138,28 @@
         <div v-if="paused" class="pause-overlay">⏸ {{ t.paused }}</div>
       </div>
 
-      <!-- Note buttons -->
-      <div class="note-buttons">
+      <!-- Input mode tabs -->
+      <div class="input-tabs">
+        <button :class="['input-tab', { active: inputMode === 'buttons' }]" @click="setInputMode('buttons')">
+          ⌨ {{ t.inputModeButtons }}
+        </button>
+        <button
+          v-if="voiceSupported"
+          :class="['input-tab', { active: inputMode === 'voice' }]"
+          @click="setInputMode('voice')"
+        >🎤 {{ t.inputModeVoice }}</button>
+        <button
+          v-if="pianoSupported"
+          :class="['input-tab', { active: inputMode === 'pianoAudio' }]"
+          @click="setInputMode('pianoAudio')"
+        >🎙 {{ t.inputModePianoAudio }}</button>
+        <button :class="['input-tab', { active: inputMode === 'pianoKeys' }]" @click="setInputMode('pianoKeys')">
+          🎹 {{ t.inputModePianoKeys }}
+        </button>
+      </div>
+
+      <!-- Buttons mode -->
+      <div v-if="inputMode === 'buttons'" class="note-buttons">
         <button
           v-for="(note, idx) in t.notes"
           :key="idx"
@@ -147,6 +167,87 @@
           :disabled="paused"
           @click="answer(idx)"
         >{{ note }}</button>
+      </div>
+
+      <!-- Voice mode -->
+      <div v-else-if="inputMode === 'voice'" class="audio-mode-section">
+        <div class="audio-row">
+          <button
+            :class="['btn-mic', { active: isListening }]"
+            :title="isListening ? t.voiceOff : t.voiceOn"
+            :disabled="paused || modelProgress < 100"
+            @click="toggleVoice"
+          >🎤</button>
+          <div class="audio-feedback">
+            <template v-if="modelProgress < 100">
+              <span class="model-loading-label">{{ modelProgress }}%</span>
+              <div class="model-bar-wrap">
+                <div class="model-bar" :style="{ width: modelProgress + '%' }" />
+              </div>
+            </template>
+            <template v-else-if="lastHeard">
+              <span class="heard-chip">🎤 {{ lastHeard }}</span>
+            </template>
+            <template v-else-if="rawTranscript">
+              <span class="heard-chip muted">🔍 {{ rawTranscript }}</span>
+            </template>
+            <span v-else :class="['device-badge', deviceType]">
+              {{ deviceType === 'kws' ? '⚡ KWS' : deviceType === 'webgpu' ? '⚡ GPU' : '🖥 CPU' }}
+            </span>
+          </div>
+        </div>
+        <div v-if="isListening" class="mic-meter-wrap">
+          <div
+            class="mic-meter-bar"
+            :class="{ speaking: micLevel > thresholdFraction }"
+            :style="{ width: (micLevel * 100).toFixed(1) + '%' }"
+          />
+          <div class="mic-meter-threshold" :style="{ left: (thresholdFraction * 100).toFixed(1) + '%' }" />
+        </div>
+        <div v-if="isListening" class="mic-threshold-row">
+          <label class="setting-label">
+            {{ t.micThreshold }} — <span class="slider-value">{{ micThreshold === 0 ? t.micOff : micThreshold + '%' }}</span>
+          </label>
+          <input type="range" min="0" max="90" step="5" v-model.number="micThreshold" class="slider" />
+        </div>
+      </div>
+
+      <!-- Piano audio mode -->
+      <div v-else-if="inputMode === 'pianoAudio'" class="audio-mode-section">
+        <div class="audio-row">
+          <button
+            :class="['btn-mic', { active: pianoListening }]"
+            :title="pianoListening ? t.pianoOff : t.pianoOn"
+            :disabled="paused"
+            @click="togglePiano"
+          >🎹</button>
+          <div class="audio-feedback">
+            <template v-if="lastHeardHz">
+              <span class="heard-chip">🎹 {{ lastHeardHz.toFixed(0) }} Hz</span>
+            </template>
+            <span v-else class="setting-label">{{ pianoListening ? t.pianoOff : t.pianoOn }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Piano keys mode -->
+      <div v-else-if="inputMode === 'pianoKeys'" class="piano-kb-wrap">
+        <div class="piano-kb">
+          <div
+            v-for="(note, idx) in t.notes"
+            :key="idx"
+            :class="['pk-white', answerClass(idx), { 'pk-disabled': paused }]"
+            @click="!paused && answer(idx)"
+          >
+            <span class="pk-label">{{ note }}</span>
+          </div>
+          <!-- Decorative black keys — positioned between C/D, D/E, F/G, G/A, A/B -->
+          <div class="pk-black" style="left:10.2%"></div>
+          <div class="pk-black" style="left:24.5%"></div>
+          <div class="pk-black" style="left:52.9%"></div>
+          <div class="pk-black" style="left:67.1%"></div>
+          <div class="pk-black" style="left:81.4%"></div>
+        </div>
       </div>
 
       <!-- Game controls -->
@@ -157,69 +258,6 @@
         <button class="btn-skip" :disabled="paused || !!feedback" @click="skipNote">{{ t.skip }}</button>
         <button class="btn-danger" @click="stopGame">{{ t.stop }}</button>
         <button class="btn-quit" @click="quitGame">{{ t.quit }}</button>
-      </div>
-
-      <!-- Audio input section -->
-      <div v-if="voiceSupported || pianoSupported" class="audio-section">
-        <div class="audio-row">
-          <!-- Input toggles -->
-          <div class="audio-btns">
-            <button
-              v-if="voiceSupported"
-              :class="['btn-mic', { active: isListening }]"
-              :title="isListening ? t.voiceOff : t.voiceOn"
-              :disabled="paused || modelProgress < 100"
-              @click="toggleVoice"
-            >🎤</button>
-            <button
-              v-if="pianoSupported"
-              :class="['btn-mic', { active: pianoListening }]"
-              :title="pianoListening ? t.pianoOff : t.pianoOn"
-              :disabled="paused"
-              @click="togglePiano"
-            >🎹</button>
-          </div>
-
-          <!-- Feedback / status -->
-          <div class="audio-feedback">
-            <template v-if="modelProgress < 100 && voiceSupported">
-              <span class="model-loading-label">{{ modelProgress }}%</span>
-              <div class="model-bar-wrap">
-                <div class="model-bar" :style="{ width: modelProgress + '%' }" />
-              </div>
-            </template>
-            <template v-else-if="lastHeard">
-              <span class="heard-chip">🎤 {{ lastHeard }}</span>
-            </template>
-            <template v-else-if="lastHeardHz">
-              <span class="heard-chip">🎹 {{ lastHeardHz.toFixed(0) }} Hz</span>
-            </template>
-            <template v-else-if="rawTranscript">
-              <span class="heard-chip muted">🔍 {{ rawTranscript }}</span>
-            </template>
-            <span v-else-if="modelProgress >= 100" :class="['device-badge', deviceType]">
-              {{ deviceType === 'kws' ? '⚡ KWS' : deviceType === 'webgpu' ? '⚡ GPU' : '🖥 CPU' }}
-            </span>
-          </div>
-        </div>
-
-        <!-- Mic level meter (voice only) -->
-        <div v-if="isListening" class="mic-meter-wrap">
-          <div
-            class="mic-meter-bar"
-            :class="{ speaking: micLevel > thresholdFraction }"
-            :style="{ width: (micLevel * 100).toFixed(1) + '%' }"
-          />
-          <div class="mic-meter-threshold" :style="{ left: (thresholdFraction * 100).toFixed(1) + '%' }" />
-        </div>
-
-        <!-- Mic threshold slider -->
-        <div v-if="isListening" class="mic-threshold-row">
-          <label class="setting-label">
-            {{ t.micThreshold }} — <span class="slider-value">{{ micThreshold === 0 ? t.micOff : micThreshold + '%' }}</span>
-          </label>
-          <input type="range" min="0" max="90" step="5" v-model.number="micThreshold" class="slider" />
-        </div>
       </div>
     </div>
 
@@ -540,6 +578,21 @@ const {
 	isListening: pianoListening,
 	toggle: togglePiano,
 } = usePitchInput({ onNote: answer, micThreshold, lastHeardHz });
+
+// --- Input mode ---
+const inputMode = ref("buttons"); // 'buttons' | 'voice' | 'pianoAudio' | 'pianoKeys'
+
+function setInputMode(mode) {
+	// Stop any active audio before switching
+	if (isListening.value) toggleVoice();
+	if (pianoListening.value) togglePiano();
+	inputMode.value = mode;
+	// Auto-start audio for audio modes (only when game is running)
+	if (!paused.value && screen.value === "game") {
+		if (mode === "voice") toggleVoice();
+		if (mode === "pianoAudio") togglePiano();
+	}
+}
 
 const showTrainer = ref(false);
 
@@ -959,8 +1012,43 @@ onBeforeUnmount(() => {
   gap: 8px;
 }
 
-/* Audio input section */
-.audio-section {
+/* Input mode tab bar */
+.input-tabs {
+  display: flex;
+  gap: 3px;
+  background: var(--surface-2);
+  border-radius: 10px;
+  padding: 3px;
+}
+
+.input-tab {
+  flex: 1;
+  padding: 8px 4px;
+  border-radius: 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 0.15s, color 0.15s;
+}
+
+.input-tab.active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+}
+
+.input-tab:hover:not(.active) {
+  color: var(--text);
+}
+
+/* Audio mode sections (voice / piano-audio) */
+.audio-mode-section {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -976,12 +1064,6 @@ onBeforeUnmount(() => {
   gap: 8px;
 }
 
-.audio-btns {
-  display: flex;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
 .audio-feedback {
   flex: 1;
   display: flex;
@@ -989,6 +1071,85 @@ onBeforeUnmount(() => {
   gap: 8px;
   min-width: 0;
 }
+
+/* Piano keyboard */
+.piano-kb-wrap {
+  background: #25253a;
+  border-radius: 10px;
+  padding: 8px 8px 0;
+}
+
+.piano-kb {
+  position: relative;
+  display: flex;
+  height: 90px;
+}
+
+.pk-white {
+  flex: 1;
+  background: #efefef;
+  border: 1px solid #999;
+  border-top: 3px solid #888;
+  border-left: none;
+  border-radius: 0 0 6px 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 5px;
+  position: relative;
+  z-index: 1;
+  transition: background 0.08s;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.pk-white:first-child {
+  border-left: 1px solid #999;
+  border-radius: 0 0 6px 6px;
+}
+
+.pk-white:hover:not(.pk-disabled) {
+  background: #dde0ff;
+}
+
+.pk-white:active:not(.pk-disabled) {
+  background: #c8ccff;
+}
+
+.pk-white.pk-disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.pk-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #555;
+  pointer-events: none;
+}
+
+.pk-black {
+  position: absolute;
+  top: 0;
+  width: 8.5%;
+  height: 58%;
+  background: linear-gradient(to bottom, #333, #111);
+  border-radius: 0 0 4px 4px;
+  z-index: 2;
+  pointer-events: none;
+  box-shadow: 2px 4px 6px rgba(0, 0, 0, 0.5);
+}
+
+/* Piano key feedback states */
+.pk-white.btn-correct { background: var(--success) !important; }
+.pk-white.btn-correct .pk-label { color: white; }
+.pk-white.btn-highlight {
+  background: color-mix(in srgb, var(--success) 25%, #efefef) !important;
+  border-color: var(--success);
+}
+.pk-white.btn-wrong { background: var(--error) !important; }
+.pk-white.btn-wrong .pk-label { color: white; }
 
 .heard-chip {
   font-size: 0.82rem;

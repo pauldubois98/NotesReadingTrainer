@@ -98,14 +98,6 @@
         <MusicStaff :note-history="previewHistory" :clef="clef" :max-history="maxHistory" />
       </div>
 
-      <!-- Voice training -->
-      <div v-if="voiceSupported" class="voice-train-row">
-        <button class="btn-train-voice" @click="showTrainer = true">
-          🎤 {{ t.trainVoice }}
-        </button>
-        <span v-if="personalReady" class="personal-badge">✓ {{ t.personalModel }}</span>
-      </div>
-
       <button class="btn-primary btn-large" @click="startGame">{{ t.start }}</button>
     </div>
 
@@ -281,6 +273,12 @@
                 {{ deviceType === 'kws' ? '⚡ KWS' : deviceType === 'webgpu' ? '⚡ GPU' : '🖥 CPU' }}
               </span>
             </div>
+          </div>
+          <div class="voice-train-row">
+            <button class="btn-train-voice" @click="showTrainer = true">
+              🎤 {{ t.trainVoice }}
+            </button>
+            <span v-if="personalReady" class="personal-badge">✓ {{ t.personalModel }}</span>
           </div>
           <div v-if="isListening" class="mic-meter-wrap">
             <div

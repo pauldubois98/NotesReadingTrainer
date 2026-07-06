@@ -14,16 +14,24 @@ export function usePitchInput({ onNote, micThreshold, lastHeardHz }) {
 	let prevRms = 0;
 	let lastFireTime = 0;
 	let clearTimer = null;
+	const MIN_CONFIDENCE = 0.75; // Only accept high-confidence detections
 
 	async function start() {
 		worker = new Worker(new URL("../workers/pitchWorker.js", import.meta.url), {
 			type: "module",
 		});
 
-		worker.onmessage = ({ data: { noteIdx, hz } }) => {
+		worker.onmessage = ({ data: { noteIdx, hz, confidence } }) => {
 			if (noteIdx === null) return;
+			
+			// Only accept detections with sufficient confidence
+			if (confidence < MIN_CONFIDENCE) {
+				return;
+			}
+			
 			const now = Date.now();
-			if (now - lastFireTime < 800) return; // debounce — one answer per key press
+			// Reduced debounce for faster response (from 800ms to 400ms)
+			if (now - lastFireTime < 400) return;
 			lastFireTime = now;
 			lastHeardHz.value = hz;
 			clearTimeout(clearTimer);

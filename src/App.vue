@@ -101,7 +101,7 @@
       <button class="btn-primary btn-large" @click="startGame">{{ t.start }}</button>
     </div>
 
-    <!-- Voice trainer modal -->
+    <!-- Voice trainer modal - COMMENTED OUT
     <VoiceTrainer
       v-if="showTrainer"
       :lang="lang"
@@ -114,6 +114,7 @@
       @close="showTrainer = false"
     />
 
+    -->
     <!-- ── Game screen ─────────────────────────────────────────── -->
     <div v-else-if="screen === 'game'" class="card game-card">
       <!-- Header stats -->
@@ -221,11 +222,13 @@
           <button :class="['input-tab', { active: inputMode === 'buttons' }]" @click="setInputMode('buttons')">
             ⌨ {{ t.inputModeButtons }}
           </button>
+          <!-- Voice mode - COMMENTED OUT
           <button
             v-if="voiceSupported"
             :class="['input-tab', { active: inputMode === 'voice' }]"
             @click="setInputMode('voice')"
           >🎤 {{ t.inputModeVoice }}</button>
+          -->
           <button
             v-if="pianoSupported"
             :class="['input-tab', { active: inputMode === 'pianoAudio' }]"
@@ -247,7 +250,7 @@
           >{{ note }}</button>
         </div>
 
-        <!-- Voice mode -->
+        <!-- Voice mode - COMMENTED OUT
         <div v-else-if="inputMode === 'voice'" class="audio-mode-section">
           <div class="audio-row">
             <button
@@ -295,6 +298,7 @@
             <input type="range" min="0" max="90" step="5" v-model.number="micThreshold" class="slider" />
           </div>
         </div>
+        -->
 
         <!-- Piano audio mode -->
         <div v-else-if="inputMode === 'pianoAudio'" class="audio-mode-section">
@@ -403,9 +407,9 @@
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
 import MusicStaff from "./components/MusicStaff.vue";
-import VoiceTrainer from "./components/VoiceTrainer.vue";
+// import VoiceTrainer from "./components/VoiceTrainer.vue";
 import { useI18n } from "./i18n.js";
-import { useVoiceInput } from "./composables/useVoiceInput.js";
+// import { useVoiceInput } from "./composables/useVoiceInput.js";
 import { usePitchInput } from "./composables/usePitchInput.js";
 
 // --- Theme ---
@@ -732,7 +736,7 @@ function togglePause() {
 function quitGame() {
 	stopTimer();
 	if (feedbackTimeout) clearTimeout(feedbackTimeout);
-	if (isListening.value) toggleVoice();
+	// if (isListening.value) toggleVoice();
 	if (pianoListening.value) togglePiano();
 	feedback.value = null;
 	noteHistory.value = [];
@@ -742,7 +746,7 @@ function quitGame() {
 function stopGame() {
 	stopTimer();
 	if (feedbackTimeout) clearTimeout(feedbackTimeout);
-	if (isListening.value) toggleVoice();
+	// if (isListening.value) toggleVoice();
 	if (pianoListening.value) togglePiano();
 	screen.value = "summary";
 }
@@ -752,31 +756,31 @@ function playAgain() {
 	noteHistory.value = [];
 }
 
-// Fraction of the meter bar where the current VAD threshold sits (for the marker line)
+// Fraction of the meter bar where the current VAD threshold sits (for the marker line) - COMMENTED OUT
 // Mirrors: energyThreshold = 0.10 - sliderPct * 0.088, then ×4 to match the meter scaling
-const thresholdFraction = computed(() => {
-	const sliderPct = micThreshold.value / 100;
-	const energy = 0.1 - sliderPct * 0.088;
-	return Math.min(energy * 4, 1);
-});
+// const thresholdFraction = computed(() => {
+// 	const sliderPct = micThreshold.value / 100;
+// 	const energy = 0.1 - sliderPct * 0.088;
+// 	return Math.min(energy * 4, 1);
+// });
 
-// --- Voice input + personal model ---
-const {
-	isSupported: voiceSupported,
-	isListening,
-	lastHeard,
-	rawTranscript,
-	modelProgress,
-	deviceType,
-	micLevel,
-	toggle: toggleVoice,
-	collectCounts,
-	personalReady,
-	trainAccuracy,
-	collectSample,
-	trainPersonal,
-	resetPersonal,
-} = useVoiceInput({ lang, onNote: answer, micThreshold });
+// --- Voice input + personal model - COMMENTED OUT
+// const {
+// 	isSupported: voiceSupported,
+// 	isListening,
+// 	lastHeard,
+// 	rawTranscript,
+// 	modelProgress,
+// 	deviceType,
+// 	micLevel,
+// 	toggle: toggleVoice,
+// 	collectCounts,
+// 	personalReady,
+// 	trainAccuracy,
+// 	collectSample,
+// 	trainPersonal,
+// 	resetPersonal,
+// } = useVoiceInput({ lang, onNote: answer, micThreshold });
 
 // --- Piano pitch detection ---
 const lastHeardHz = ref(0);
@@ -787,21 +791,21 @@ const {
 } = usePitchInput({ onNote: answer, micThreshold, lastHeardHz });
 
 // --- Input mode ---
-const inputMode = ref("buttons"); // 'buttons' | 'voice' | 'pianoAudio' | 'pianoKeys'
+const inputMode = ref("buttons"); // 'buttons' | 'pianoAudio' | 'pianoKeys'
 
 function setInputMode(mode) {
 	// Stop any active audio before switching
-	if (isListening.value) toggleVoice();
+	// if (isListening.value) toggleVoice();
 	if (pianoListening.value) togglePiano();
 	inputMode.value = mode;
 	// Auto-start audio for audio modes (only when game is running)
 	if (!paused.value && screen.value === "game") {
-		if (mode === "voice") toggleVoice();
+		// if (mode === "voice") toggleVoice();
 		if (mode === "pianoAudio") togglePiano();
 	}
 }
 
-const showTrainer = ref(false);
+// const showTrainer = ref(false);
 
 onMounted(() => window.addEventListener("keydown", handleGlobalKeydown));
 onBeforeUnmount(() => {

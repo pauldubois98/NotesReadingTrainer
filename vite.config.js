@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
 export default defineConfig({
+  base: '/NotesReadingTrainer/',
   plugins: [vue()],
   worker: { format: 'es' },
   // SharedArrayBuffer required by the WASM ONNX runtime (Whisper fallback on Firefox)

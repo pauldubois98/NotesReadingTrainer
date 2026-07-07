@@ -5,7 +5,7 @@ export default defineConfig({
   base: '/NotesReadingTrainer/',
   plugins: [vue()],
   worker: { format: 'es' },
-  // SharedArrayBuffer required by the WASM ONNX runtime (Whisper fallback on Firefox)
+  // SharedArrayBuffer required by the WASM ONNX runtime and TF.js
   server: {
     headers: {
       'Cross-Origin-Opener-Policy': 'same-origin',
@@ -14,5 +14,13 @@ export default defineConfig({
   },
   optimizeDeps: {
     exclude: ['@huggingface/transformers'],
+  },
+  // Polyfill browser incompatibilities
+  define: {
+    global: 'window',
+  },
+  // Increase chunk size warning limit since TF.js is large
+  build: {
+    chunkSizeWarningLimit: 1000,
   },
 })

@@ -304,16 +304,25 @@
         <div v-else-if="inputMode === 'pianoAudio'" class="audio-mode-section">
           <div class="audio-row">
             <button
-              :class="['btn-mic', { active: pianoListening }]"
-              :title="pianoListening ? t.pianoOff : t.pianoOn"
-              :disabled="paused"
-              @click="togglePiano"
+              :class="['btn-mic', { active: effectivePianoListening }]"
+              :title="effectivePianoListening ? t.pianoOff : t.pianoOn"
+              :disabled="paused || pianoModelLoading"
+              @click="effectivePianoToggle"
             >🎹</button>
             <div class="audio-feedback">
-              <template v-if="lastHeardHz">
+              <template v-if="pianoModelLoading">
+                <span class="model-loading-label">{{ t.modelLoading }} {{ pianoLoadProgress }}%</span>
+                <div class="model-bar-wrap">
+                  <div class="model-bar" :style="{ width: pianoLoadProgress + '%' }" />
+                </div>
+              </template>
+              <template v-else-if="pianoError">
+                <span class="heard-chip muted">⚠ {{ pianoError }}</span>
+              </template>
+              <template v-else-if="lastHeardHz">
                 <span class="heard-chip">🎹 {{ lastHeardHz.toFixed(0) }} Hz</span>
               </template>
-              <span v-else class="setting-label">{{ pianoListening ? t.pianoOff : t.pianoOn }}</span>
+              <span v-else class="setting-label">{{ effectivePianoListening ? t.pianoOff : t.pianoOn }}</span>
             </div>
           </div>
         </div>
@@ -411,6 +420,7 @@ import MusicStaff from "./components/MusicStaff.vue";
 import { useI18n } from "./i18n.js";
 // import { useVoiceInput } from "./composables/useVoiceInput.js";
 import { usePitchInput } from "./composables/usePitchInput.js";
+import { usePianoTranscription } from "./composables/usePianoTranscription.js";
 
 // --- Theme ---
 const isDark = ref(true);
@@ -737,7 +747,7 @@ function quitGame() {
 	stopTimer();
 	if (feedbackTimeout) clearTimeout(feedbackTimeout);
 	// if (isListening.value) toggleVoice();
-	if (pianoListening.value) togglePiano();
+	if (effectivePianoListening.value) effectivePianoToggle();
 	feedback.value = null;
 	noteHistory.value = [];
 	screen.value = "setup";
@@ -747,7 +757,7 @@ function stopGame() {
 	stopTimer();
 	if (feedbackTimeout) clearTimeout(feedbackTimeout);
 	// if (isListening.value) toggleVoice();
-	if (pianoListening.value) togglePiano();
+	if (effectivePianoListening.value) effectivePianoToggle();
 	screen.value = "summary";
 }
 
@@ -784,11 +794,35 @@ function playAgain() {
 
 // --- Piano pitch detection ---
 const lastHeardHz = ref(0);
+
+// Use the new OAF-JS based piano transcription
 const {
 	isSupported: pianoSupported,
 	isListening: pianoListening,
+	isLoading: pianoModelLoading,
+	loadProgress: pianoLoadProgress,
+	modelLoaded: pianoModelLoaded,
+	error: pianoError,
 	toggle: togglePiano,
+} = usePianoTranscription({ onNote: answer, micThreshold, lastHeardHz });
+
+// Fallback to simple YIN-based detection if OAF fails
+const {
+	isSupported: fallbackPianoSupported,
+	isListening: fallbackPianoListening,
+	toggle: toggleFallbackPiano,
 } = usePitchInput({ onNote: answer, micThreshold, lastHeardHz });
+
+// Use OAF if available, otherwise fall back
+const effectivePianoListening = computed(() => pianoListening.value || fallbackPianoListening.value);
+const effectivePianoToggle = () => {
+	if (pianoModelLoaded.value || !pianoModelLoading.value) {
+		togglePiano();
+	} else {
+		// Model not loaded, try fallback
+		toggleFallbackPiano();
+	}
+};
 
 // --- Input mode ---
 const inputMode = ref("buttons"); // 'buttons' | 'pianoAudio' | 'pianoKeys'
@@ -796,12 +830,12 @@ const inputMode = ref("buttons"); // 'buttons' | 'pianoAudio' | 'pianoKeys'
 function setInputMode(mode) {
 	// Stop any active audio before switching
 	// if (isListening.value) toggleVoice();
-	if (pianoListening.value) togglePiano();
+	if (effectivePianoListening.value) effectivePianoToggle();
 	inputMode.value = mode;
 	// Auto-start audio for audio modes (only when game is running)
 	if (!paused.value && screen.value === "game") {
 		// if (mode === "voice") toggleVoice();
-		if (mode === "pianoAudio") togglePiano();
+		if (mode === "pianoAudio") effectivePianoToggle();
 	}
 }
 

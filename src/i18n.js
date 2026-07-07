@@ -3,6 +3,8 @@ export const translations = {
 		title: "Entraîneur de Lecture de Notes",
 		subtitle: "Identifiez la note affichée sur la portée",
 		clef: "Clef",
+		pianoModelLoading: "Chargement modèle piano",
+		modelLoading: "Chargement du modèle",
 		clefs: {
 			sol2: "Sol (Violon)",
 			do1: "Do Soprano",
@@ -129,7 +131,8 @@ export const translations = {
 		personalModel: "Personal model active",
 		micThreshold: "Mic threshold",
 		micOff: "off",
-		modelLoading: "Loading voice model",
+		modelLoading: "Loading model",
+		pianoModelLoading: "Loading piano model",
 		pttHint: "Hold [Space] to speak",
 		pttRecording: "Recording…",
 		pause: "Pause",
